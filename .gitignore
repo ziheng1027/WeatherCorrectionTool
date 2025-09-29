@@ -209,6 +209,6 @@ __marimo__/
 # Custom
 data
 output
-log
+temp
 .claude
 claude.md
