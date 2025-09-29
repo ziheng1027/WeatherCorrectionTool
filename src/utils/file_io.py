@@ -1,3 +1,4 @@
+# src/utils/file_io.py
 import json
 from pathlib import Path
 
@@ -17,4 +18,4 @@ def save_config_json(config_data: dict):
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=4, ensure_ascii=False)
-    
+

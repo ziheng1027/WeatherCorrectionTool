@@ -1,11 +1,70 @@
 # src/db/crud.py
 import pandas as pd
+from datetime import datetime
 from sqlalchemy.orm import Session
 from . import db_models
 
+
+def create_task(db: Session, task_id: str, task_name: str, task_type: str, params: dict) -> db_models.TaskProgress:
+    """
+    创建一个任务。
+
+    :param db: SQLAlchemy数据库会话.
+    :param task_id: 任务ID.
+    :param task_name: 任务名称.
+    :param task_type: 任务类型.
+    :param params: 任务参数.
+    :return: 创建的任务对象.
+    """
+    task = db_models.TaskProgress(task_id=task_id, task_name=task_name, task_type=task_type)
+    task.set_params(params)
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+def update_task_status(db: Session, task_id: str, status: str, progress: float, text: str):
+    """
+    更新任务状态, 进度, 进度的文字说明。
+
+    :param db: SQLAlchemy数据库会话.
+    :param task_id: 任务ID.
+    :param status: 任务状态.
+    :param progress: 任务进度.
+    """
+    task = db.query(db_models.TaskProgress).filter(db_models.TaskProgress.task_id == task_id).first()
+    if task:
+        task.status = status
+        task.cur_progress = progress
+        task.progress_text = text
+        if status in ["COMPLETED", "FAILED"]:
+            task.end_time = datetime.now()
+        db.commit()
+
+def get_task_by_id(db: Session, task_id: str) -> db_models.TaskProgress:
+    """
+    根据任务ID获取任务。
+
+    :param db: SQLAlchemy数据库会话.
+    :param task_id: 任务ID.
+    :return: 任务对象.
+    """
+    return db.query(db_models.TaskProgress).filter(db_models.TaskProgress.task_id == task_id).first()
+
+def get_all_tasks(db: Session, skip: int=0, limit: int=82):
+    """
+    获取历史任务列表。
+
+    :param db: SQLAlchemy数据库会话.
+    :param skip: 跳过的任务数量.
+    :param limit: 返回的任务数量.
+    :return: 任务列表.
+    """
+    return db.query(db_models.TaskProgress).order_by(db_models.TaskProgress.start_time.desc()).offset(skip).limit(limit).all()
+
 def bulk_insert_raw_station_data(db: Session, data_df: pd.DataFrame):
     """
-    将Pandas DataFrame中的站点数据批量导入数据库。
+    将Pandas DataFrame中的站点数据批量导入数据库 - 原始站点数据。
 
     :param db: SQLAlchemy数据库会话.
     :param data_df: 包含待导入数据的DataFrame.
@@ -15,6 +74,24 @@ def bulk_insert_raw_station_data(db: Session, data_df: pd.DataFrame):
     # to_sql 是pandas提供的一个非常高效的批量插入方法
     data_df.to_sql(
         name=db_models.RawStationData.__tablename__,  # 指定要插入的表名，使用模型中的表名
+        con=db.bind,        # 获取底层的数据库连接，确保数据能正确写入
+        if_exists='append', # 如果表已存在，则追加数据而不是覆盖或报错
+        index=False,        # 不将DataFrame的索引写入数据库，只写入实际数据
+        chunksize=50000
+    )
+
+def bulk_insert_proc_station_data(db: Session, data_df: pd.DataFrame):
+    """
+    将Pandas DataFrame中的站点数据批量导入数据库 - 处理与合并后的数据。
+
+    :param db: SQLAlchemy数据库会话.
+    :param data_df: 包含待导入数据的DataFrame.
+                    列名应与RawStationData模型中的字段名匹配
+                    (station_id, station_name, timestamp, temperature, etc.).
+    """
+    # to_sql 是pandas提供的一个非常高效的批量插入方法
+    data_df.to_sql(
+        name=db_models.ProcStationGridData.__tablename__,  # 指定要插入的表名，使用模型中的表名
         con=db.bind,        # 获取底层的数据库连接，确保数据能正确写入
         if_exists='append', # 如果表已存在，则追加数据而不是覆盖或报错
         index=False,        # 不将DataFrame的索引写入数据库，只写入实际数据

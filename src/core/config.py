@@ -1,3 +1,4 @@
+# src/core/config.py
 from typing import Dict
 from pathlib import Path
 from pydantic import BaseModel, DirectoryPath, FilePath

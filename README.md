@@ -17,8 +17,6 @@
 │   │   ├── db_models.py        # 数据库模型定义
 │   │   ├── database.py         # 数据库连接
 │   │   ├── crud.py             # 数据库操作, 增删改查
-│   ├── tasks                   # celery任务模块
-│   │   ├── import_worker       # 数据导入任务
 │   ├── utils                   # 工具模块
 │   │   ├── file_io             # 文件读写
 │   │   ├── metrics             # 指标计算
