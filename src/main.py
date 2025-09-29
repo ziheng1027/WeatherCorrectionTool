@@ -19,11 +19,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/", tags=["root"])
+async def root():
+    return {"message": "欢迎使用气象数据订正工具 API!"}
+
 # 添加路由
 app.include_router(config_manage.router)
 
 
-@app.get("/", tags=["root"])
-async def root():
-    return {"message": "欢迎使用气象数据订正工具 API!"}
+
 

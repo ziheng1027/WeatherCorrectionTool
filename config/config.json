@@ -1,5 +1,8 @@
 {
-    "station_data_path": "D:\\YZH\\Python\\WeatherCorrectionTool\\data\\station\\湖北省82个国家气象站-观测数据",
-    "grid_data_path": "D:\\YZH\\Python\\WeatherCorrectionTool\\data\\grid",
-    "dem_data_path": ""
+    "station_data_dir": "data\\station\\湖北省82个国家气象站-观测数据",
+    "grid_data_dir": "data\\grid",
+    "station_info_path": "data/station/湖北省82个国家气象站-站点信息/Hubei.82.Stations.Information.csv",
+    "dem_data_path": "data/dem/hubei_terrain.nc",
+    "model_output_dir": "output/models",
+    "correction_output_dir": "output/correction"
 }
