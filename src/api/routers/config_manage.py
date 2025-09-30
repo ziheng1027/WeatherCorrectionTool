@@ -1,10 +1,7 @@
 # update_config.py
-import json
-from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
-from celery.result import AsyncResult
-from ...core.schemas import ConfigRequest, DataSourceRequest, MessageResponse
-from ...core.config import settings
+from ...core.schemas import DataSourceRequest, MessageResponse
 from ...utils.file_io import load_config_json, save_config_json
 
 
