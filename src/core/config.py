@@ -1,10 +1,14 @@
 # src/core/config.py
+import threading
 from typing import Dict
 from pathlib import Path
 from pydantic import BaseModel, DirectoryPath, FilePath
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from ..utils.file_io import load_config_json
 
+
+# 全局的停止事件
+STOP_EVENT = threading.Event()
 
 class Settings(BaseSettings):
     """配置文件读取类"""

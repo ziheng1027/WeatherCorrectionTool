@@ -1,16 +1,23 @@
 # src/main.py
+
 from fastapi import FastAPI
-from src.api.routers import config_manage, data_import
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from src.api.routers import config_manage, data_import
+from src.core.config import STOP_EVENT
 
 
-def lifespan(app: FastAPI):
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # 在应用启动时创建数据库和表
     print("应用启动...")
     from src.db.database import create_db_and_tables
     create_db_and_tables()
     yield
-    print("应用关闭...")
+    print("应用关闭...发送停止信号给后台任务...")
+    STOP_EVENT.set()
+    print("应用已关闭...")
 
 # 创建FastAPI应用实例
 app = FastAPI(

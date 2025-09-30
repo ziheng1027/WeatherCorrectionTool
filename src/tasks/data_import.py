@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..db import crud
 from ..db.database import SessionLocal
 from ..core.data_db_mapping import RAW_STATION_DATA_MAPPING, REQUIRED_COLUMNS
+from ..core.config import STOP_EVENT
 
 
 def _count_lines_in_file(file_path: Path) -> int:
@@ -45,10 +46,16 @@ def run_station_data_import(task_id: str, dir: str):
             sub_tasks.append(sub_task)
         crud.update_task_status(db, task_id, "PROCESSING", 0.0, f"已创建{total_files}个文件导入子任务...")
 
-        # 循环处理每个文件
+        # 循环处理每个文件(子任务)
         completed_count = 0
         CHUNK_SIZE = 50000
         for i, sub_task in enumerate(sub_tasks):
+            # 在处理每个文件前, 检查停止信号
+            if STOP_EVENT.is_set():
+                print(f"检测到关闭信号, 任务 {task_id} 中断")
+                # 更新下一任务状态为已取消
+                crud.update_task_status(db, task_id, "FAILED", (i/total_files) * 100, "任务被用户中断")
+                return
             file_name = sub_task.get_params()["file_name"]
             file_path = source_dir / file_name
             rows_processed = 0
@@ -70,6 +77,10 @@ def run_station_data_import(task_id: str, dir: str):
 
                 # 循环处理每个数据块
                 for df_chunk in df_iterator:
+                    if STOP_EVENT.is_set():
+                        print(f"检测到关闭信号, 文件 {file_name} 处理中断")
+                        crud.update_task_status(db, sub_task.task_id, "FAILED", (rows_processed / total_rows) * 100, "任务被用户中断")
+                    
                     df_renamed = df_chunk.rename(columns=RAW_STATION_DATA_MAPPING)
                     df_renamed["timestamp"] = pd.to_datetime(df_renamed[["year", "month", "day", "hour"]])
                     final_columns = [

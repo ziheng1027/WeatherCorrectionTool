@@ -20,7 +20,7 @@ def create_task(db: Session, task_id: str, task_name: str, task_type: str, param
     task = db_models.TaskProgress(
         task_id=task_id, 
         task_name=task_name, 
-        task_type=task_type,
+        task_type=task_type, 
         parent_task_id=parent_task_id
     )
     task.set_params(params)
@@ -115,3 +115,27 @@ def bulk_insert_proc_station_data(db: Session, data_df: pd.DataFrame):
         index=False,        # 不将DataFrame的索引写入数据库，只写入实际数据
         chunksize=50000
     )
+
+def get_global_filenames_by_status(db: Session, status: str) -> list[str]:
+    """
+    【全局查询】获取所有状态为 `status` 的数据导入子任务，并返回文件名列表。
+    
+    注意：这个函数不区分父任务，会返回所有历史任务中符合条件的子任务。
+    """
+    # 查询条件是正确的，符合你的“不按父任务ID查询”的需求
+    # 我在这里硬编码了 task_type，因为这个函数的目标就是获取导入文件的子任务
+    tasks = db.query(db_models.TaskProgress).filter(
+        db_models.TaskProgress.task_type == "DataImport_SubTask",
+        db_models.TaskProgress.status == status
+    ).all()
+
+    file_names = []
+    for task in tasks:
+        # 修正 #1: 使用 task.get_params() 方法将JSON字符串安全地转换为字典
+        params_dict = task.get_params()
+        
+        # 修正 #3: 从字典中读取的键是 'file'，与创建任务时保持一致
+        if params_dict and "file_name" in params_dict:
+            file_names.append(params_dict["file_name"])
+            
+    return file_names
