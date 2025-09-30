@@ -49,7 +49,7 @@ def run_station_data_import(task_id: str, dir: str):
         completed_count = 0
         CHUNK_SIZE = 50000
         for i, sub_task in enumerate(sub_tasks):
-            file_name = sub_task.task_params["file_name"]
+            file_name = sub_task.get_params()["file_name"]
             file_path = source_dir / file_name
             rows_processed = 0
             
@@ -71,7 +71,7 @@ def run_station_data_import(task_id: str, dir: str):
                 # 循环处理每个数据块
                 for df_chunk in df_iterator:
                     df_renamed = df_chunk.rename(columns=RAW_STATION_DATA_MAPPING)
-                    df_renamed["timestamp"] = pd.to_datetime(df_renamed["year", "month", "day", "hour"])
+                    df_renamed["timestamp"] = pd.to_datetime(df_renamed[["year", "month", "day", "hour"]])
                     final_columns = [
                         "station_id", "station_name", "lat", "lon", "timestamp", "year", "month", "day", "hour",
                         "temperature", "humidity", "precipitation_1h", "wind_speed_2min"
