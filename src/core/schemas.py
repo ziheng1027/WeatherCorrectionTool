@@ -1,6 +1,6 @@
 # src/core/schemas.py
 from pydantic import BaseModel, DirectoryPath, Field
-from typing import Optional, Any, Literal
+from typing import Optional, Any, Literal, List
 from datetime import datetime
 
 
@@ -9,20 +9,34 @@ class MessageResponse(BaseModel):
     message: str
 
 
-class TaskStatusResponse(BaseModel):
-    """用于返回任务状态的响应模型"""
-    task_id: str
-    status: str
-    progress: Optional[Any] = None # 可以是任意类型的进度详情，如dict
-
-
 class TaskCreationResponse(BaseModel):
     """用于返回任务创建结果的响应模型"""
     message: str
     task_id: str
 
 
-class DataSourceDirs(BaseModel):
+class TaskStatusResponse(BaseModel):
+    """用于返回任务状态的响应模型"""
+    task_id: str
+    status: str
+    progress: Optional[Any] = None      # 可以是任意类型的进度详情，如dict
+
+
+class SubTaskStatusResponse(BaseModel):
+    """用于返回子任务状态的响应模型"""
+    task_id: str
+    task_name: str
+    status: str
+    progress_text: Optional[str] = None
+
+
+class TaskDetailsResponse(BaseModel):
+    """用于返回父任务及其所有子任务详细状态的响应模型"""
+    parent: TaskStatusResponse
+    sub_tasks: List[SubTaskStatusResponse]
+
+
+class DataSourceRequest(BaseModel):
     """用于接受数据源路径的请求体模型"""
     station_data_dir: DirectoryPath    # 站点数据路径
     grid_data_dir: DirectoryPath       # 网格数据路径

@@ -5,18 +5,24 @@ from sqlalchemy.orm import Session
 from . import db_models
 
 
-def create_task(db: Session, task_id: str, task_name: str, task_type: str, params: dict) -> db_models.TaskProgress:
+def create_task(db: Session, task_id: str, task_name: str, task_type: str, params: dict, parent_task_id: str = None) -> db_models.TaskProgress:
     """
-    创建一个任务。
+    创建一个任务(父任务/子任务 都可)。
 
     :param db: SQLAlchemy数据库会话.
     :param task_id: 任务ID.
     :param task_name: 任务名称.
     :param task_type: 任务类型.
     :param params: 任务参数.
+    :param parent_task_id: 父任务ID.
     :return: 创建的任务对象.
     """
-    task = db_models.TaskProgress(task_id=task_id, task_name=task_name, task_type=task_type)
+    task = db_models.TaskProgress(
+        task_id=task_id, 
+        task_name=task_name, 
+        task_type=task_type,
+        parent_task_id=parent_task_id
+    )
     task.set_params(params)
     db.add(task)
     db.commit()
@@ -53,14 +59,26 @@ def get_task_by_id(db: Session, task_id: str) -> db_models.TaskProgress:
 
 def get_all_tasks(db: Session, skip: int=0, limit: int=82):
     """
-    获取历史任务列表。
+    获取历史顶层任务列表 (排除了子任务)。
 
     :param db: SQLAlchemy数据库会话.
     :param skip: 跳过的任务数量.
     :param limit: 返回的任务数量.
     :return: 任务列表.
     """
-    return db.query(db_models.TaskProgress).order_by(db_models.TaskProgress.start_time.desc()).offset(skip).limit(limit).all()
+    return db.query(db_models.TaskProgress).filter(db_models.TaskProgress.parent_task_id == None).order_by(db_models.TaskProgress.start_time.desc()).offset(skip).limit(limit).all()
+
+def get_subtasks_by_parent_id(db: Session, parent_task_id: str):
+    """
+    获取指定父任务ID的所有子任务。
+
+    :param db: SQLAlchemy数据库会话.
+    :param parent_task_id: 父任务ID.
+    :return: 子任务列表.
+    """
+    return db.query(db_models.TaskProgress).filter(db_models.TaskProgress.parent_task_id == parent_task_id).all()
+
+
 
 def bulk_insert_raw_station_data(db: Session, data_df: pd.DataFrame):
     """

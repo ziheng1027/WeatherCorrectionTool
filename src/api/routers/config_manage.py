@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from celery.result import AsyncResult
-from ...core.schemas import ConfigRequest, DataSourceDirs, MessageResponse
+from ...core.schemas import ConfigRequest, DataSourceRequest, MessageResponse
 from ...core.config import settings
 from ...utils.file_io import load_config_json, save_config_json
 
@@ -15,7 +15,7 @@ router = APIRouter(
 
 
 @router.put("/source-dirs", response_model=MessageResponse, summary="更新数据源目录路径")
-def update_source_data_dirs(dirs: DataSourceDirs):
+def update_source_data_dirs(dirs: DataSourceRequest):
     """接收前端输入的站点和格点数据目录, 并安全地更新 config.json 文件"""
     try:
         cur_config = load_config_json()
