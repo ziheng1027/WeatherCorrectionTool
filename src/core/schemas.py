@@ -9,6 +9,12 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class FileListResponse(BaseModel):
+    """用于返回文件列表的响应模型"""
+    count: int
+    files: List[str]
+
+
 class TaskCreationResponse(BaseModel):
     """用于返回任务创建结果的响应模型"""
     message: str
@@ -45,11 +51,6 @@ class DataSourceRequest(BaseModel):
 class ConfigRequest(BaseModel):
     """用于接受配置字典的请求体模型"""
     config: dict
-
-
-class DataImportRequest(BaseModel):
-    """用于接受数据导入请求的请求体模型"""
-    directory_dir: DirectoryPath
 
 
 class StationPreviewRequest(BaseModel):

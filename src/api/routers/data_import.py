@@ -3,11 +3,14 @@ import uuid
 from threading import Thread
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from ...core.schemas import TaskCreationResponse, TaskStatusResponse, SubTaskStatusResponse, TaskDetailsResponse
+from ...core.schemas import (
+    TaskCreationResponse, TaskStatusResponse, SubTaskStatusResponse, TaskDetailsResponse,
+    MessageResponse, FileListResponse
+)
 from ...db import crud
 from ...db.database import SessionLocal
 from ...tasks.data_import import run_station_data_import
-from ...utils.file_io import load_config_json
+from ...utils.file_io import load_config_json, get_station_files
 
 
 router = APIRouter(
@@ -21,6 +24,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@router.get("/check", response_model=FileListResponse, summary="检查文件数量并返回文件列表")
+def check_files(db: Session = Depends(get_db)):
+    """检查文件数量并返回文件列表"""
+    config = load_config_json()
+    station_data_dir = config["station_data_dir"]
+    file_list = get_station_files(station_data_dir)
+    return FileListResponse(count=len(file_list), files=file_list)
+
 
 @router.post("/start", response_model=TaskCreationResponse, summary="启动数据导入任务")
 def start_data_import(db: Session = Depends(get_db)):
