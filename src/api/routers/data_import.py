@@ -1,7 +1,7 @@
 # src/api/data_import.py
 import uuid
 from threading import Thread
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ...core.schemas import (
     TaskCreationResponse, TaskStatusResponse, SubTaskStatusResponse, TaskDetailsResponse,
