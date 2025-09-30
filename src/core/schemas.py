@@ -24,8 +24,10 @@ class TaskCreationResponse(BaseModel):
 class TaskStatusResponse(BaseModel):
     """用于返回任务状态的响应模型"""
     task_id: str
+    task_name: str
+    task_type: str
     status: str
-    progress: Optional[Any] = None      # 可以是任意类型的进度详情，如dict
+    progress: Optional[float] = None
 
 
 class SubTaskStatusResponse(BaseModel):
@@ -33,6 +35,7 @@ class SubTaskStatusResponse(BaseModel):
     task_id: str
     task_name: str
     status: str
+    progress: Optional[float] = None
     progress_text: Optional[str] = None
 
 

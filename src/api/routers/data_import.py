@@ -98,8 +98,10 @@ def get_task_status(task_id: str, db: Session = Depends(get_db)):
 
     return TaskStatusResponse(
         task_id=task.task_id,
+        task_name=task.task_name,
+        task_type=task.task_type,
         status=task.status,
-        progress={"percent": task.cur_progress, "text": task.progress_text}
+        progress=task.cur_progress
     )
 
 
@@ -115,14 +117,17 @@ def get_task_details(task_id: str, db: Session = Depends(get_db)):
     # 组装响应数据
     parent_status = TaskStatusResponse(
         task_id=parent_task.task_id,
+        task_name=parent_task.task_name,
+        task_type=parent_task.task_type,
         status=parent_task.status,
-        progress={"percent": parent_task.cur_progress, "text": parent_task.progress_text}
+        progress=parent_task.cur_progress
     )
     sub_tasks_status = [
         SubTaskStatusResponse(
             task_id=st.task_id,
             task_name=st.task_name,
             status=st.status,
+            progress=st.cur_progress,
             progress_text=st.progress_text
         ) for st in sub_tasks_db
     ]
@@ -144,7 +149,7 @@ def get_all_pending_files(db: Session = Depends(get_db)):
     """
     查询历史上所有待处理的文件名列表。
     """
-    filenames = crud.get_global_filenames_by_status(db, status="PENDING")
+    filenames, _ = crud.get_global_filenames_by_status(db, status="PENDING")
     return {"files": filenames}
 
 
@@ -153,8 +158,8 @@ def get_all_processing_files(db: Session = Depends(get_db)):
     """
     查询历史上所有导入中的文件名列表。
     """
-    filenames = crud.get_global_filenames_by_status(db, status="PROCESSING")
-    return {"files": filenames}
+    filenames, progress = crud.get_global_filenames_by_status(db, status="PROCESSING")
+    return {"files": filenames, "progress": progress}
 
 
 @router.get("/global/completed_files", summary="【全局】获取所有已完成的文件列表")
@@ -162,13 +167,14 @@ def get_all_completed_files(db: Session = Depends(get_db)):
     """
     查询历史上所有成功导入的文件名列表。
     """
-    filenames = crud.get_global_filenames_by_status(db, status="COMPLETED")
+    filenames, _ = crud.get_global_filenames_by_status(db, status="COMPLETED")
     return {"files": filenames}
+
 
 @router.get("/global/failed_files", summary="【全局】获取所有失败的文件列表")
 def get_all_failed_files(db: Session = Depends(get_db)):
     """
     查询历史上所有导入失败的文件名列表。
     """
-    filenames = crud.get_global_filenames_by_status(db, status="FAILED")
+    filenames, _ = crud.get_global_filenames_by_status(db, status="FAILED")
     return {"files": filenames}
