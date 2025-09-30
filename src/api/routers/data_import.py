@@ -18,6 +18,7 @@ router = APIRouter(
     tags=["Data Import"],
 )
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -69,6 +70,7 @@ def get_task_status(task_id: str, db: Session = Depends(get_db)):
         progress={"percent": task.cur_progress, "text": task.progress_text}
     )
 
+
 @router.get("/status/{task_id}/details", response_model=TaskDetailsResponse, summary="查询任务详细状态(包含子任务)")
 def get_task_details(task_id: str, db: Session = Depends(get_db)):
     """查询父任务的总体状态及其所有子任务的详细列表"""
@@ -96,6 +98,7 @@ def get_task_details(task_id: str, db: Session = Depends(get_db)):
     status_order = {"PENDING": 0, "PROCESSING": 1, "COMPLETED": 2, "FAILED": 3}
     sub_tasks_status.sort(key=lambda x: status_order.get(x.status, 4))
     return TaskDetailsResponse(parent=parent_status, sub_tasks=sub_tasks_status)
+
 
 @router.get("/history", summary="获取历史任务列表")
 def get_task_history(skip: int = 0, limit: int = 82, db: Session = Depends(get_db)):
