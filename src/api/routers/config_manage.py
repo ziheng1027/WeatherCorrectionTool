@@ -1,4 +1,4 @@
-# update_config.py
+# src/api/routers/config_manage.py
 
 from fastapi import APIRouter, HTTPException
 from ...core.schemas import DataSourceRequest, MessageResponse
@@ -9,7 +9,7 @@ router = APIRouter(
     prefix="/settings",
     tags=["Settings"],
 )
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
 
 @router.put("/source-dirs", response_model=MessageResponse, summary="更新数据源目录路径")
 def update_source_data_dirs(dirs: DataSourceRequest):
@@ -24,7 +24,7 @@ def update_source_data_dirs(dirs: DataSourceRequest):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新配置文件失败: {str(e)}")
-    
+
 
 @router.get("/all-config-info", summary="获取当前所有配置信息")
 def get_all_config():
