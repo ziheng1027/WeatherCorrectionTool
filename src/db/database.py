@@ -1,5 +1,5 @@
 # src/db/database.py
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from pathlib import Path
@@ -18,12 +18,20 @@ engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 
-# 3. 创建一个SessionLocal类（会话工厂）
+# 3. 增加时间监听器来开启WAL模式
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """当每个新连接建立时, 执行PRAGMA命令开启WAL模式"""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
+
+# 4. 创建一个SessionLocal类（会话工厂）
 #    这个类的实例将是实际的数据库会务。
 #    autocommit=False 和 autoflush=False 确保数据操作在事务中进行，需要手动提交。
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# 4. 创建一个Base类（声明性基类）
+# 5. 创建一个Base类（声明性基类）
 #    我们之后创建的所有数据库模型（ORM models）都需要继承这个类。
 #    它会帮助SQLAlchemy将我们的Python类映射到数据库的表中。
 Base = declarative_base()
