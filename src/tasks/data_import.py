@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from ..db import crud
 from ..db.database import SessionLocal
-from ..core.data_db_mapping import RAW_STATION_DATA_MAPPING, REQUIRED_COLUMNS
+from ..core.data_mapping import RAW_STATION_DATA_MAPPING, REQUIRED_COLUMNS
 from ..core.config import STOP_EVENT
 
 

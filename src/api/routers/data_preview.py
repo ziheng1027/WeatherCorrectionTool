@@ -6,8 +6,8 @@ from ...utils.file_io import load_config_json, save_config_json
 
 
 router = APIRouter(
-    prefix="/settings",
-    tags=["Settings"],
+    prefix="/data-preview",
+    tags=["数据预览"],
 )
 
 
