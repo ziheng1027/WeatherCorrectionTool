@@ -22,7 +22,7 @@ task_lock = Lock()
 
 router = APIRouter(
     prefix="/data-import",
-    tags=["Data Import"],
+    tags=["数据导入"],
 )
 
 
