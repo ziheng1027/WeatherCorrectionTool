@@ -48,7 +48,7 @@ def run_station_data_import(task_id: str, dir: str):
 
         # 循环处理每个文件(子任务)
         completed_count = 0
-        CHUNK_SIZE = 50000
+        CHUNK_SIZE = 40000
         for i, sub_task in enumerate(sub_tasks):
             # 在处理每个文件前, 检查停止信号
             if STOP_EVENT.is_set():
@@ -72,6 +72,12 @@ def run_station_data_import(task_id: str, dir: str):
                 # 更新子任务状态为 PROCESSING
                 crud.update_task_status(db, sub_task.task_id, "PROCESSING", 0.0, "开始处理文件...")
 
+                # 先删除重复数据再插入新数据
+                deleted_rows = crud.delete_raw_station_data_by_filename(db, file_name)
+                if deleted_rows > 0:
+                    print(f"成功删除了 {deleted_rows} 行重复数据")
+                crud.update_task_status(db, sub_task.task_id, "PROCESSING", 0.0, f"已删除 {deleted_rows} 行重复数据")
+
                 # 使用read_csv的chunksize参数创建迭代器
                 df_iterator = pd.read_csv(file_path, usecols=REQUIRED_COLUMNS, chunksize=CHUNK_SIZE)
 
@@ -83,9 +89,12 @@ def run_station_data_import(task_id: str, dir: str):
                     
                     df_renamed = df_chunk.rename(columns=RAW_STATION_DATA_MAPPING)
                     df_renamed["timestamp"] = pd.to_datetime(df_renamed[["year", "month", "day", "hour"]])
+                    # 添加源文件列
+                    df_renamed["source_file"] = file_name
+
                     final_columns = [
                         "station_id", "station_name", "lat", "lon", "timestamp", "year", "month", "day", "hour",
-                        "temperature", "humidity", "precipitation_1h", "wind_speed_2min"
+                        "temperature", "humidity", "precipitation_1h", "wind_speed_2min", "source_file"
                     ]
                     # 将这个小的df存入数据库
                     crud.bulk_insert_raw_station_data(db, df_renamed[final_columns])

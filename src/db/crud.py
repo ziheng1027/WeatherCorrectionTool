@@ -106,6 +106,20 @@ def get_global_filenames_by_status(db: Session, status: str) -> list[str]:
     
     return file_names, progress
 
+def delete_raw_station_data_by_filename(db: Session, filename: str):
+    """
+    根据源文件名称删除原始站点数据表中的记录
+
+    :param db: SQLAlchemy数据库会话.
+    :param filename: 重复数据的源文件名称.
+    :return: 被删除的记录行数.
+    """
+    num_deleted = db.query(db_models.RawStationData).filter(
+        db_models.RawStationData.source_file == filename
+    ).delete(synchronize_session=False)
+    db.commit()
+    return num_deleted
+
 def bulk_insert_raw_station_data(db: Session, data_df: pd.DataFrame):
     """
     将Pandas DataFrame中的站点数据批量导入数据库 - 原始站点数据。
@@ -121,7 +135,7 @@ def bulk_insert_raw_station_data(db: Session, data_df: pd.DataFrame):
         con=db.bind,        # 获取底层的数据库连接，确保数据能正确写入
         if_exists='append', # 如果表已存在，则追加数据而不是覆盖或报错
         index=False,        # 不将DataFrame的索引写入数据库，只写入实际数据
-        chunksize=50000
+        chunksize=40000
     )
 
 def bulk_insert_proc_station_data(db: Session, data_df: pd.DataFrame):
@@ -139,6 +153,6 @@ def bulk_insert_proc_station_data(db: Session, data_df: pd.DataFrame):
         con=db.bind,        # 获取底层的数据库连接，确保数据能正确写入
         if_exists='append', # 如果表已存在，则追加数据而不是覆盖或报错
         index=False,        # 不将DataFrame的索引写入数据库，只写入实际数据
-        chunksize=50000
+        chunksize=40000
     )
 

@@ -25,6 +25,9 @@ class RawStationData(Base):
     precipitation_1h = Column(Float, nullable=True)     # 降水
     wind_speed_2min = Column(Float, nullable=True)      # 风速
 
+    # 数据源自哪个文件？
+    source_file = Column(String, index=True, comment="原始CSV文件名")
+
 
 class ProcStationGridData(Base):
     """处理后的包含站点和格点值的数据表"""
