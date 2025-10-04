@@ -56,16 +56,56 @@ class ConfigRequest(BaseModel):
     config: dict
 
 
+AVAILABLE_ELEMENTS = Literal["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]
+
 class StationPreviewRequest(BaseModel):
+    """用于接受站点预览请求的请求体模型"""
     station_name: str = Field(..., description="站点名称", example="老河口")
-    element: Literal["温度", "相对湿度", "1小时降水量", "2分钟平均风速"]    # 使用 Literal 强制只能从预定义列表中选择
+    element: AVAILABLE_ELEMENTS
     start_time: datetime
     end_time: datetime
 
 
+class StationPreviewResponse(BaseModel):
+    """用于返回站点预览响应的响应模型"""
+    station_name: str
+    lat: float
+    lon: float
+    timestamps: List[datetime]
+    values: List[Optional[float]]           # 允许值为空
+
+
+class GridDataRequest(BaseModel):
+    """用于接受网格数据请求的请求体模型"""
+    element: AVAILABLE_ELEMENTS
+    timestamp: datetime = Field(..., description="查询的特定时刻")
+
+
+class GridPreviewResponse(BaseModel):
+    """用于返回网格预览响应的响应模型"""
+    lats: List[float]
+    lons: List[float]
+    values: List[List[Optional[float]]]     # 2D数组
+
+
+class GridTimeSeriesRequest(BaseModel):
+    element: AVAILABLE_ELEMENTS
+    lat: float = Field(..., description="纬度")
+    lon: float = Field(..., description="经度")
+    start_time: datetime
+    end_time: datetime
+
+
+class GridTimeSeriesResponse(BaseModel):
+    lat: float
+    lon: float
+    timestamps: List[datetime]
+    values: List[Optional[float]]
+
+
 class ModelTrainRequest(BaseModel):
     """用于接受模型训练请求的请求体模型"""
-    element: Literal["温度", "相对湿度", "1小时降水量", "2分钟平均风速"]    # 使用 Literal 强制只能从预定义列表中选择
+    element: AVAILABLE_ELEMENTS
     start_time: datetime
     end_time: datetime
     test_split_method: Literal["按年份划分", "按站点划分"]

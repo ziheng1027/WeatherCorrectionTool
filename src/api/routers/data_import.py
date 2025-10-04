@@ -10,7 +10,8 @@ from ...core.schemas import (
 from ...db import crud
 from ...db.database import SessionLocal
 from ...tasks.data_import import run_station_data_import
-from ...utils.file_io import load_config_json, get_station_files
+from ...core.config import load_config_json
+from ...utils.file_io import get_station_files
 
 
 # 全局任务状态管理器, Lock来保证多线程下对TASK_STATE的读写安全

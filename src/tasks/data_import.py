@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from ..db import crud
 from ..db.database import SessionLocal
-from ..core.data_mapping import RAW_STATION_DATA_MAPPING, REQUIRED_COLUMNS
+from ..core.data_mapping import RAW_STATION_DATA_TO_DB_MAPPING, REQUIRED_COLUMNS
 from ..core.config import STOP_EVENT
 
 
@@ -87,7 +87,7 @@ def run_station_data_import(task_id: str, dir: str):
                         print(f"检测到关闭信号, 文件 {file_name} 处理中断")
                         crud.update_task_status(db, sub_task.task_id, "FAILED", (rows_processed / total_rows) * 100, "任务被用户中断")
                     
-                    df_renamed = df_chunk.rename(columns=RAW_STATION_DATA_MAPPING)
+                    df_renamed = df_chunk.rename(columns=RAW_STATION_DATA_TO_DB_MAPPING)
                     df_renamed["timestamp"] = pd.to_datetime(df_renamed[["year", "month", "day", "hour"]])
                     # 添加源文件列
                     df_renamed["source_file"] = file_name

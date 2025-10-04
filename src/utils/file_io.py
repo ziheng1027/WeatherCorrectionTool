@@ -3,23 +3,12 @@ import os
 import json
 import glob
 from pathlib import Path
+from datetime import datetime
+from pathlib import Path
+from ..core.config import settings
+from ..core.data_mapping import ELEMENT_TO_NC_VAR_MAPPING
 
 
-CONFIG_FILE = Path("config/config.json")
-
-def load_config_json():
-    """根据默认路径来加载json配置文件"""
-    if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return {}
-
-def save_config_json(config_data: dict):
-    """将配置字典保存到json配置文件"""
-    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config_data, f, indent=4, ensure_ascii=False)
 
 def get_station_files(dir):
     """获取站点文件列表"""
@@ -36,3 +25,19 @@ def get_grid_files(dir, var_grid, year):
     pattern = os.path.join(dir, "*.nc")
     grid_files = sorted(glob.glob(pattern))
     return grid_files
+
+def find_nc_file_for_timestamp(element: str, timestamp: datetime) -> Path:
+    """根据要素和时间戳定位对应的.nc文件"""
+    nc_var = ELEMENT_TO_NC_VAR_MAPPING.get(element)
+    if not nc_var:
+        raise ValueError(f"无效的要素名称: {element}")
+
+    # 构建文件路径: CARAS/tmp.hourly/2008/xxx.nc
+    file_name = f"CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}.hourly.nc"
+    file_path = Path(settings.GRID_DATA_DIR) / f"{nc_var}.hourly" / str(timestamp.year) / file_name
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"格点文件不存在: {file_path}")
+    
+    return file_path
+

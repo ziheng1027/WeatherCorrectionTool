@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from sqlalchemy.orm import Session
 from . import db_models
+from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
 
 
 def create_task(db: Session, task_id: str, task_name: str, task_type: str, params: dict, parent_task_id: str = None) -> db_models.TaskProgress:
@@ -47,6 +48,7 @@ def update_task_status(db: Session, task_id: str, status: str, progress: float, 
             task.end_time = datetime.now()
         db.commit()
 
+"""--------------------查询任务--------------------"""
 def get_task_by_id(db: Session, task_id: str) -> db_models.TaskProgress:
     """
     根据任务ID获取任务。
@@ -106,6 +108,7 @@ def get_global_filenames_by_status(db: Session, status: str) -> list[str]:
     
     return file_names, progress
 
+"""--------------------数据导入--------------------"""
 def delete_raw_station_data_by_filename(db: Session, filename: str):
     """
     根据源文件名称删除原始站点数据表中的记录
@@ -156,3 +159,35 @@ def bulk_insert_proc_station_data(db: Session, data_df: pd.DataFrame):
         chunksize=40000
     )
 
+"""--------------------数据预览--------------------"""
+def get_unique_station_names(db: Session):
+    """从原始数据表中查询所有唯一的站点名称。"""
+    return db.query(db_models.RawStationData.station_name).distinct().all()
+
+def get_raw_station_data(db: Session, station_name: str, element: str, start_time: datetime, end_time: datetime):
+    """
+    查询指定站点、要素和时间范围的原始数据。
+    """
+    db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
+    if not db_column_name:
+        raise ValueError(f"无效的要素名称: {element}")
+
+    # 获取模型中对应的列对象
+    db_column = getattr(db_models.RawStationData, db_column_name)
+
+    # 构建查询
+    query = db.query(
+        db_models.RawStationData.station_name,
+        db_models.RawStationData.lat,
+        db_models.RawStationData.lon,
+        db_models.RawStationData.timestamp,
+        db_column.label("value")  # 将查询的列重命名为'value'，方便后续统一处理
+    ).filter(
+        db_models.RawStationData.station_name == station_name,
+        db_models.RawStationData.timestamp >= start_time,
+        db_models.RawStationData.timestamp <= end_time
+    ).order_by(
+        db_models.RawStationData.timestamp
+    )
+    
+    return query.all()
