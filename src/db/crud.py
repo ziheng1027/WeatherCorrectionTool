@@ -191,3 +191,25 @@ def get_raw_station_data(db: Session, station_name: str, element: str, start_tim
     )
     
     return query.all()
+
+"""--------------------数据处理--------------------"""
+def get_raw_station_data_by_year(db: Session, db_column_name: str, year: int) -> pd.DataFrame:
+    """
+    查询指定年份和要素的原始站点数据。
+    """
+    # 获取模型中对应的列对象
+    db_column = getattr(db_models.RawStationData, db_column_name)
+
+    # 构建查询
+    query = db.query(
+        db_models.RawStationData.station_id,
+        db_models.RawStationData.lat,
+        db_models.RawStationData.lon,
+        db_models.RawStationData.timestamp,
+        db_column.label("station_value")
+    ).filter(
+        db_models.RawStationData.year == year
+    )
+    
+    # 使用pandas直接从SQL查询读取数据，效率更高
+    return pd.read_sql(query.statement, db.bind)
