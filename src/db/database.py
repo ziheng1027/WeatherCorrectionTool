@@ -14,9 +14,7 @@ SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_FILE.resolve()}"
 
 # 2. 创建SQLAlchemy引擎 (Engine)
 #    引擎是SQLAlchemy应用的核心接口，负责处理与数据库的连接和通信。
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 
 # 3. 增加时间监听器来开启WAL模式
 @event.listens_for(engine, "connect")
@@ -40,3 +38,11 @@ Base = declarative_base()
 def create_db_and_tables():
     # 这个函数将在main.py中被调用
     Base.metadata.create_all(bind=engine)
+
+# 依赖注入函数，用于在FastAPI路由中获取数据库会话
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

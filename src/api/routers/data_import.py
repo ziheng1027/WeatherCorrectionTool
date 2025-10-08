@@ -8,7 +8,7 @@ from ...core.schemas import (
     MessageResponse, FileListResponse
 )
 from ...db import crud
-from ...db.database import SessionLocal
+from ...db.database import SessionLocal, get_db
 from ...tasks.data_import import run_station_data_import
 from ...core.config import load_config_json
 from ...utils.file_io import get_station_files
@@ -26,13 +26,6 @@ router = APIRouter(
     tags=["数据导入"],
 )
 
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def run_station_data_import_wrapper(task_id: str, dir:str):
     """包装原始任务函数, 以确保在任务结束后能够安全地释放全局锁"""

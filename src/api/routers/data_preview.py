@@ -6,21 +6,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from ...db import crud
 from ...core import schemas
 from ...core.data_preview import get_grid_data_at_time, get_grid_time_series_for_coord
-from ...db.database import SessionLocal
+from ...db.database import SessionLocal, get_db
 
 
 router = APIRouter(
     prefix="/data-preview",
     tags=["数据预览"],
 )
-
-# 依赖项：获取数据库会话
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/stations", response_model=List[str], summary="获取所有站点名称列表")
