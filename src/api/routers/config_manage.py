@@ -9,7 +9,7 @@ router = APIRouter(
     prefix="/settings",
     tags=["设置"],
 )
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+
 
 @router.put("/source-dirs", response_model=MessageResponse, summary="更新数据源目录路径")
 def update_source_data_dirs(dirs: DataSourceRequest):
