@@ -109,6 +109,21 @@ def get_global_filenames_by_status(db: Session, status: str) -> list[str]:
     return file_names, progress
 
 """--------------------数据导入--------------------"""
+def delete_pending_data_import_subtasks(db: Session) -> int:
+    """
+    删除所有状态为 PENDING 且类型为 DataImport_SubTask 的子任务。
+    这通常在开始一次新的全局数据导入任务前调用，以清理之前可能中断的残留任务。
+
+    :param db: SQLAlchemy数据库会话.
+    :return: 被删除的记录行数.
+    """
+    num_deleted = db.query(db_models.TaskProgress).filter(
+        db_models.TaskProgress.task_type == "DataImport_SubTask",
+        db_models.TaskProgress.status == "PENDING"
+    ).delete(synchronize_session=False)
+    db.commit()
+    return num_deleted
+
 def delete_raw_station_data_by_filename(db: Session, filename: str):
     """
     根据源文件名称删除原始站点数据表中的记录

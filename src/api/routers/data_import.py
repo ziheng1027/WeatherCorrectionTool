@@ -27,6 +27,17 @@ router = APIRouter(
 )
 
 
+@router.post("/clear-pending-import-tasks", response_model=MessageResponse, summary="清理待处理的导入子任务")
+def clear_pending_import_tasks(db: Session = Depends(get_db)):
+    """
+    在开始一次新的数据导入前，调用此接口来清理数据库中所有历史残留的、
+    状态为 "PENDING" 的数据导入子任务。
+    这可以防止前端在轮询进度时，获取到旧任务和新任务的混合列表。
+    """
+    deleted_count = crud.delete_pending_data_import_subtasks(db)
+    return {"message": f"成功清除了 {deleted_count} 个待处理的导入子任务。"}
+
+
 def run_station_data_import_wrapper(task_id: str, dir:str):
     """包装原始任务函数, 以确保在任务结束后能够安全地释放全局锁"""
     try:
