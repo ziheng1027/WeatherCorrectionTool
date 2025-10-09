@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, HTTPException, Depends
 from ...db import crud
 from ...core import schemas
+from ...core.config import settings
+from ...core.data_mapping import get_name_to_id_mapping
 from ...core.data_preview import get_grid_data_at_time, get_grid_time_series_for_coord
 from ...db.database import SessionLocal, get_db
 
@@ -15,13 +17,12 @@ router = APIRouter(
 )
 
 
-@router.get("/stations", response_model=List[str], summary="获取所有站点名称列表")
-def get_all_station_names(db: Session = Depends(get_db)):
+@router.get("/stations", summary="获取所有站点名称列表")
+def get_all_station_info():
     """
-    从数据库中查询所有不重复的站点名称, 用于前端下拉列表选择。
+    获取所有站点名称和经纬度
     """
-    stations = crud.get_unique_station_names(db)
-    return [station.station_name for station in stations]
+    return {"station": list(get_name_to_id_mapping(settings.STATION_INFO_PATH).items())}
 
 
 @router.post("/station-data", response_model=schemas.StationPreviewResponse, summary="获取站点时序数据")

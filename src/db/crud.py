@@ -175,10 +175,6 @@ def bulk_insert_proc_station_data(db: Session, data_df: pd.DataFrame):
     )
 
 """--------------------数据预览--------------------"""
-def get_unique_station_names(db: Session):
-    """从原始数据表中查询所有唯一的站点名称。"""
-    return db.query(db_models.RawStationData.station_name).distinct().all()
-
 def get_raw_station_data(db: Session, station_name: str, element: str, start_time: datetime, end_time: datetime):
     """
     查询指定站点、要素和时间范围的原始数据。

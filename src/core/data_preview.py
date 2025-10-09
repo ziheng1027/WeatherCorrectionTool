@@ -3,7 +3,7 @@ import xarray as xr
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from ..core.data_mapping import ELEMENT_TO_NC_VAR_MAPPING
+from ..core.data_mapping import ELEMENT_TO_NC_MAPPING
 from ..utils.file_io import find_nc_file_for_timestamp
 
 
@@ -16,7 +16,7 @@ def get_grid_data_at_time(element: str, timestamp: datetime):
     :return: lats(纬度数组), lons(经度数组), values(二维数值数组)
     """
     file_path = find_nc_file_for_timestamp(element, timestamp)
-    nc_var = ELEMENT_TO_NC_VAR_MAPPING[element]
+    nc_var = ELEMENT_TO_NC_MAPPING[element]
 
     # 使用xarray打开.nc文件
     with xr.open_dataset(file_path) as ds:
@@ -51,7 +51,7 @@ def get_grid_time_series_for_coord(element: str, lat: float, lon: float, start_t
     values_out = []
     timestamps_out = []
 
-    nc_var = ELEMENT_TO_NC_VAR_MAPPING.get(element)
+    nc_var = ELEMENT_TO_NC_MAPPING.get(element)
     if not nc_var:
         raise ValueError(f"无效的要素名称: {element}")
 

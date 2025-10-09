@@ -2,6 +2,7 @@
 from pydantic import BaseModel, DirectoryPath, Field
 from typing import Optional, Any, Literal, List
 from datetime import datetime
+from .config import settings
 
 
 class MessageResponse(BaseModel):
@@ -89,6 +90,7 @@ class GridPreviewResponse(BaseModel):
 
 
 class GridTimeSeriesRequest(BaseModel):
+    """用于接受单个网格值时间序列请求的请求体模型"""
     element: AVAILABLE_ELEMENTS
     lat: float = Field(..., description="纬度")
     lon: float = Field(..., description="经度")
@@ -97,10 +99,18 @@ class GridTimeSeriesRequest(BaseModel):
 
 
 class GridTimeSeriesResponse(BaseModel):
+    """用于返回单个网格值时间序列响应的响应模型"""
     lat: float
     lon: float
     timestamps: List[datetime]
     values: List[Optional[float]]
+
+
+class DataProcessingRequest(BaseModel):
+    """用于接受数据处理请求的请求体模型"""
+    element: List[str] = Field(..., description="要处理的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
+    start_year: str = Field(..., description="起始年份", example="2008")
+    end_year: str = Field(..., description="结束年份", example="2023")
 
 
 class ModelTrainRequest(BaseModel):
