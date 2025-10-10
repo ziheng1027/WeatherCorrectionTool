@@ -48,7 +48,7 @@ def run_station_data_import(task_id: str, dir: str):
 
         # 循环处理每个文件(子任务)
         completed_count = 0
-        CHUNK_SIZE = 20000
+        CHUNK_SIZE = 40000
         for i, sub_task in enumerate(sub_tasks):
             # 在处理每个文件前, 检查停止信号
             if STOP_EVENT.is_set():
