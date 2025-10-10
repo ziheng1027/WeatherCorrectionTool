@@ -3,7 +3,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from src.api.routers import config_manage, data_import, data_preview, data_process
+from src.api.routers import (
+    config_manage, data_import, data_preview, data_process, cancel_task
+)
 from src.core.config import STOP_EVENT
 
 
@@ -43,6 +45,7 @@ async def root():
 
 # 添加路由
 app.include_router(config_manage.router)
+app.include_router(cancel_task.router)
 app.include_router(data_import.router)
 app.include_router(data_preview.router)
-# app.include_router(data_process.router)
+app.include_router(data_process.router)

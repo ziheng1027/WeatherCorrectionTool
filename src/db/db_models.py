@@ -50,7 +50,7 @@ class ProcStationGridData(Base):
     humidity = Column(Float, nullable=True)                 # 相对湿度
     humidity_grid = Column(Float, nullable=True)            # 相对湿度格点值
     precipitation_1h = Column(Float, nullable=True)         # 降水
-    precipitation__1h_grid = Column(Float, nullable=True)   # 降水格点值
+    precipitation_1h_grid = Column(Float, nullable=True)   # 降水格点值
     wind_speed_2min = Column(Float, nullable=True)          # 风速
     wind_speed_2min_grid = Column(Float, nullable=True)     # 风速格点值
 

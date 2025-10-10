@@ -108,9 +108,10 @@ class GridTimeSeriesResponse(BaseModel):
 
 class DataProcessingRequest(BaseModel):
     """用于接受数据处理请求的请求体模型"""
-    element: List[str] = Field(..., description="要处理的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
+    elements: List[str] = Field(..., description="要处理的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
     start_year: str = Field(..., description="起始年份", example="2008")
     end_year: str = Field(..., description="结束年份", example="2023")
+    num_workers: int = Field(..., description="工作进程数", example=48)
 
 
 class ModelTrainRequest(BaseModel):

@@ -8,7 +8,8 @@ from ...core.schemas import (
     MessageResponse, FileListResponse
 )
 from ...db import crud
-from ...db.database import SessionLocal, get_db
+from ...core.config import STOP_EVENT
+from ...db.database import get_db
 from ...tasks.data_import import run_station_data_import
 from ...core.config import load_config_json
 from ...utils.file_io import get_station_files
@@ -61,6 +62,8 @@ def check_files():
 @router.post("/start", response_model=TaskCreationResponse, summary="启动数据导入任务")
 def start_data_import(db: Session = Depends(get_db)):
     """启动数据导入任务"""
+    # 开启信号
+    STOP_EVENT.clear()
     # 检查并设置状态锁
     with task_lock:
         if TASK_STATE["is_running"]:
@@ -163,7 +166,7 @@ def get_all_processing_files(db: Session = Depends(get_db)):
     """
     查询历史上所有导入中的文件名列表。
     """
-    filenames, progress = crud.get_global_filenames_by_status(db, status="PROCESSING")
+    filenames, progress = crud.get_global_filenames_by_status(db, task_type="DataImport_SubTask", status="PROCESSING")
     return {"files": filenames, "progress": progress}
 
 
@@ -172,7 +175,7 @@ def get_all_completed_files(db: Session = Depends(get_db)):
     """
     查询历史上所有成功导入的文件名列表。
     """
-    filenames, _ = crud.get_global_filenames_by_status(db, status="COMPLETED")
+    filenames, _ = crud.get_global_filenames_by_status(db, task_type="DataImport_SubTask", status="COMPLETED")
     return {"files": filenames}
 
 
@@ -181,5 +184,5 @@ def get_all_failed_files(db: Session = Depends(get_db)):
     """
     查询历史上所有导入失败的文件名列表。
     """
-    filenames, _ = crud.get_global_filenames_by_status(db, status="FAILED")
+    filenames, _ = crud.get_global_filenames_by_status(db, task_type="DataImport_SubTask", status="FAILED")
     return {"files": filenames}

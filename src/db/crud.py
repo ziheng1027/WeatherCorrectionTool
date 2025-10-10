@@ -1,7 +1,7 @@
 # src/db/crud.py
 import pandas as pd
 from datetime import datetime
-from typing import List
+from typing import Optional
 from sqlalchemy import text, exists
 from sqlalchemy.orm import Session
 # 导入针对 SQLite 的特殊 insert 语句构造器
@@ -52,6 +52,37 @@ def update_task_status(db: Session, task_id: str, status: str, progress: float, 
             task.end_time = datetime.now()
         db.commit()
 
+def cancel_subtask(db: Session, parent_task_id: str):
+    """取消指定父任务下所有处于 PENDING/PROCESSING 状态的子任务。"""
+    tasks_to_cancel = db.query(db_models.TaskProgress).filter(
+        db_models.TaskProgress.parent_task_id == parent_task_id,
+        db_models.TaskProgress.status.in_(["PENDING", "PROCESSING"])
+    ).all()
+    
+    if not tasks_to_cancel:
+        return
+
+    for task in tasks_to_cancel:
+        task.status = "CANCELED"
+        task.progress_text = "任务被用户取消"
+        task.end_time = datetime.now()
+    db.commit()
+    return len(tasks_to_cancel)
+
+def is_task_type_processing(db: Session, task_type: str) -> Optional[str]:
+    """
+    检查指定类型的任务是否有任何一个正处于 'PENDING' 或 'ROCESSING' 状态。
+
+    :param db: SQLAlchemy数据库会话.
+    :param task_type: 要检查的任务类型, 例如 "DataProcessing".
+    :return: 如果有正在运行的任务则返回 True, 否则返回 False.
+    """
+    processing_task = db.query(db_models.TaskProgress).filter(
+        db_models.TaskProgress.task_type == task_type,
+        db_models.TaskProgress.status.in_(["PENDING", "PROCESSING"])
+    ).first()
+    return processing_task.task_id if processing_task else None
+    
 """--------------------查询任务--------------------"""
 def get_task_by_id(db: Session, task_id: str) -> db_models.TaskProgress:
     """
@@ -84,16 +115,15 @@ def get_subtasks_by_parent_id(db: Session, parent_task_id: str):
     """
     return db.query(db_models.TaskProgress).filter(db_models.TaskProgress.parent_task_id == parent_task_id).all()
 
-def get_global_filenames_by_status(db: Session, status: str) -> list[str]:
+def get_global_filenames_by_status(db: Session, task_type: str, status: str) -> list[str]:
     """
-    【全局查询】获取所有状态为 `status` 的数据导入子任务，并返回文件名列表。
+    【全局查询】获取所有状态为 `status` 的数据导入子任务，并返回文件名列表(从params中获取文件名-暂时只适用于DataImport任务)。
     
     注意：这个函数不区分父任务，会返回所有历史任务中符合条件的子任务。
     """
     # 查询条件是正确的，符合你的“不按父任务ID查询”的需求
-    # 我在这里硬编码了 task_type，因为这个函数的目标就是获取导入文件的子任务
     tasks = db.query(db_models.TaskProgress).filter(
-        db_models.TaskProgress.task_type == "DataImport_SubTask",
+        db_models.TaskProgress.task_type == task_type,
         db_models.TaskProgress.status == status
     ).all()
 
@@ -111,6 +141,27 @@ def get_global_filenames_by_status(db: Session, status: str) -> list[str]:
             progress = task.cur_progress
     
     return file_names, progress
+
+def get_global_task_by_status(db: Session, task_type: str, status: str) -> list[str]:
+    """
+    【全局查询】获取所有状态为 `status` 的数据导入子任务, 并返回任务参数。
+
+    注意：这个函数不区分父任务，会返回所有历史任务中符合条件的子任务。
+    """
+    tasks = db.query(db_models.TaskProgress).filter(
+        db_models.TaskProgress.task_type == task_type,
+        db_models.TaskProgress.status == status
+    ).all()
+    params_list = []
+    for task in tasks:
+        params_dict = task.get_params()
+        if status == "PROCESSING":
+            progress = task.cur_progress
+            params_dict["progress"] = progress
+        if params_dict:
+            params_list.append(params_dict)
+
+    return params_list
 
 """--------------------数据导入--------------------"""
 def delete_pending_data_import_subtasks(db: Session) -> int:

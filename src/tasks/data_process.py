@@ -11,7 +11,7 @@ from ..db.database import SessionLocal
 from ..db.db_models import TaskProgress
 from ..db.crud import (
     get_raw_station_data_by_year, create_task, update_task_status, 
-    check_existed_element_by_year, get_subtasks_by_parent_id
+    check_existed_element_by_year, get_subtasks_by_parent_id, cancel_subtask
 )
 from ..core.config import settings, STOP_EVENT
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING
@@ -51,21 +51,25 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         
         # 重复处理检查
         print(f"|---> 正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
+        update_task_status(db, subtask_id, "PROCESSING", 5.0, f"正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
         is_processed = check_existed_element_by_year(db, element, int(year))
-        update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据已存在, 跳过处理")
         if is_processed:
             print(f"|---> 警告: {year} 年的 {element} 数据已存在于数据库中, 跳过处理")
+            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据已存在, 跳过处理")
             return
         else:
             print(f"|---> {year} 年的 {element} 数据未处理, 准备开始处理...")
 
         # 1. 从数据库读取指定element, year的所有站点数据表df(分块读取)
+        update_task_status(db, subtask_id, "PROCESSING", 6.0, f"开始读取 {year} 年的 {element} 站点数据...")
         db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
         df_itrator = get_raw_station_data_by_year(db, db_column_name, int(year), chunk_size=8760)
+        update_task_status(db, subtask_id, "PROCESSING", 10.0, f"已读取 {year} 年的 {element} 站点数据")
 
         # 2. 数据清洗, 分块清洗
         cleaned_chunks = [] # 搜集清洗后的数据块
         total_raws = 0
+        update_task_status(db, subtask_id, "PROCESSING", 11.0, f"开始分块清洗 {year} 年的 {element} 站点数据...")
         print(f"|---> 开始分块清洗 {year} 年的 {element} 站点数据...")
         start_time = time()
         for df_chunk in df_itrator:
@@ -75,13 +79,14 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
 
         if not cleaned_chunks:
             print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 站点数据")
+            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"在 {year} 年未找到有效的 {element} 站点数据")
             print(f"|-- [Worker PID:{mp.current_process().pid}] 警告: 在 {year} 年未找到有效的 {element} 站点数据")
             return
         
         df_cleaned = pd.concat(cleaned_chunks, ignore_index=True)
         # 将"station_value"列重命名为DB中的列名
         df_cleaned.rename(columns={"station_value": db_column_name}, inplace=True)
-        update_task_status(db, subtask_id, "PROCESSING", 20.0, f"已清洗完成 {year} 年的 {element} 站点数据, 共 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
+        update_task_status(db, subtask_id, "PROCESSING", 30.0, f"已清洗完成 {year} 年的 {element} 站点数据, 共 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
         print(f"耗时: {time() - start_time:.2f} 秒, 共处理 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
 
         # 3. 读取所有站点的经纬度表
@@ -91,9 +96,11 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             station_coords[row["区站号(数字)"]] = {"station_name": row["站名"], "lat": row["纬度"], "lon": row["经度"]}
 
         # 4. 根据82个站点的经纬度坐标一次性提取格点值
+        update_task_status(db, subtask_id, "PROCESSING", 31.0, f"开始提取 {year} 年的 {element} 格点数据...")
         start_time = time()
         grid_files = get_grid_files(settings.GRID_DATA_DIR, ELEMENT_TO_NC_MAPPING.get(element), year)
         if not grid_files:
+            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"在 {year} 年未找到有效的 {element} 格点数据")
             print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 格点数据文件")
             return
         print(f"|--->({element}, {year}) 读取 {len(grid_files)} 个格点文件, 准备提取格点值...")
@@ -110,21 +117,17 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         ds.close()
         update_task_status(db, subtask_id, "PROCESSING", 60.0, f"格点数据提取完成, 已提取 {len(grid_df)} 条格点记录")
         print(f"耗时: {time() - start_time:.2f} 秒, 共提取 {len(grid_df)} 条格点记录")
-        print(grid_df.head(2))
-        print(grid_df.shape)
-        print(df_cleaned.head(2))
-        print(df_cleaned.shape)
     
         # 5. 合并站点数据和格点数据
+        update_task_status(db, subtask_id, "PROCESSING", 61.0, f"开始合并站点数据和格点数据...")
         print(f"|--->({element}, {year}) 开始合并站点数据和格点数据...")
         start_time = time()
         df_sg = merge_sg_df(df_cleaned, grid_df, element)
-        update_task_status(db, subtask_id, "PROCESSING", 80.0, f"站点数据和格点数据合并完成, 共得到 {len(df_sg)} 条记录")
+        update_task_status(db, subtask_id, "PROCESSING", 90.0, f"站点数据和格点数据合并完成, 共得到 {len(df_sg)} 条记录")
         print(f"耗时: {time() - start_time:.2f} 秒, 共合并得到 {len(df_sg)} 条记录")
-        print(df_sg.head(2))
-        print(df_sg.shape)
 
         # 6. 将合并后的数据以parquet格式保存到临时目录
+        update_task_status(db, subtask_id, "PROCESSING", 91.0, f"开始将合并后的数据保存到临时文件...")
         if not df_sg.empty:
             print(f"|--->({element}, {year} 将 {len(df_sg)} 条合并后的数据写入临时文件: {output_file}")
             df_sg.to_parquet(output_file, index=False)
@@ -148,7 +151,7 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
     sub_tasks_info = []
     try:
         # 1. 创建子任务
-        update_task_status(db, task_id, "PROCESSING", 0.0, "正在创建子任务...")
+        update_task_status(db, task_id, "PROCESSING", 1.0, "正在创建子任务...")
         years = range(int(start_year), int(end_year) + 1)
         for element in elements:
             for year in years:
@@ -186,7 +189,11 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
             if STOP_EVENT.is_set():
                 print(f"|--> 主进程: 检测到关闭信号, 正在终止任务 {task_id}...")
                 pool.terminate()  # 立即终止所有工作进程
+                pool.join()  # 确保所有进程都已结束
                 update_task_status(db, task_id, "FAILED", (completed_count / total_tasks) * 80, "任务被用户取消")
+                canceled_count = cancel_subtask(db, task_id)
+                print(f"|--> 主进程: 任务 {task_id} 已取消, 取消了 {canceled_count} 个子任务")
+                
                 break
             
             # 从数据库查询子任务状态来计算进度
@@ -201,7 +208,7 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
         import_subtask_id = str(uuid.uuid4())
         create_task(
             db, task_id=import_subtask_id, task_name="导入处理后的数据",
-            task_type="DataProcess_Import", params={},
+            task_type="DataProcess_SubTask", params={},
             parent_task_id=task_id 
         )
         
@@ -224,7 +231,7 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
     except Exception as e:
         error_msg = f"任务执行失败: {str(e)}"
         current_progress = db.query(TaskProgress.cur_progress).filter(TaskProgress.task_id == task_id).scalar() or 0
-        update_task_status(db, task_id, "FAILED", 0.0, error_msg)
+        update_task_status(db, task_id, "FAILED", current_progress, error_msg)
         print(f"|--> 主进程: 任务 {task_id} 发生错误: {error_msg}")
 
     finally:
@@ -237,17 +244,17 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
 
 
 
-if __name__ == "__main__":
-    db = SessionLocal()
-    elements = ["温度", "2分钟平均风速"]
-    # process_elements(db, ["温度", "2分钟平均风速"], "2020", "2020")
-    test_task_id = str(uuid.uuid4())
-    create_task(
-        db, task_id=test_task_id, task_name="测试多进程数据处理任务",
-        task_type="DataProcess", 
-        params={"elements": elements, "start_year": "2020", "end_year": "2020"},
-        parent_task_id=None 
-    )
-    db.close()
+# if __name__ == "__main__":
+#     db = SessionLocal()
+#     elements = ["温度", "2分钟平均风速"]
+#     # process_elements(db, ["温度", "2分钟平均风速"], "2020", "2020")
+#     test_task_id = str(uuid.uuid4())
+#     create_task(
+#         db, task_id=test_task_id, task_name="测试多进程数据处理任务",
+#         task_type="DataProcess", 
+#         params={"elements": elements, "start_year": "2020", "end_year": "2020"},
+#         parent_task_id=None 
+#     )
+#     db.close()
 
-    process_mp(test_task_id, elements, "2020", "2020", num_workers=4)
+#     process_mp(test_task_id, elements, "2020", "2020", num_workers=4)
