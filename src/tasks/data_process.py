@@ -1,21 +1,29 @@
 # src/tasks/data_process.py
+import os
 import uuid
 import pandas as pd
 import multiprocessing as mp
 from time import time, sleep
+from pathlib import Path
 from typing import List
 from sqlalchemy.orm import Session
 from ..db.database import SessionLocal
+from ..db.db_models import TaskProgress
 from ..db.crud import (
     get_raw_station_data_by_year, create_task, update_task_status, 
-    check_existed_element_by_year, upsert_proc_station_grid_data, get_subtasks_by_parent_id
+    check_existed_element_by_year, get_subtasks_by_parent_id
 )
 from ..core.config import settings, STOP_EVENT
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING
 from ..utils.file_io import get_grid_files, safe_open_mfdataset
-from ..core.data_process import clean_station_data, extract_grid_values_for_stations, merge_sg_df
+from ..core.data_process import (
+    clean_station_data, extract_grid_values_for_stations, merge_sg_df,
+    import_proc_data_from_temp_files
+)
 
 
+
+TEMP_DATA_DIR = Path("output/temp_data")
 
 def process_elements(db: Session, elements: List[str], start_year: str, end_year: str):
     """处理所有要素的数据"""
@@ -31,6 +39,11 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
     """处理单个要素某一年的数据-多进程的原子任务"""
     # 每个进程单独创建数据库会话
     db: Session = SessionLocal()
+    # 动态创建临时目录: output/temp_data/{element}/{year}
+    output_dir = TEMP_DATA_DIR/element/year
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, f"{element}_{year}.parquet")
+
     try:
         # 更新子任务状态为 处理中"PROCESSING"
         update_task_status(db, subtask_id, "PROCESSING", 0.0, f"开始处理 {year} 年的 {element} 数据...")
@@ -83,7 +96,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         if not grid_files:
             print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 格点数据文件")
             return
-        print(f"|--->({year}, {element}) 读取 {len(grid_files)} 个格点文件, 准备提取格点值...")
+        print(f"|--->({element}, {year}) 读取 {len(grid_files)} 个格点文件, 准备提取格点值...")
 
         # 打开多个netCDF文件, 处理坐标非单调问题
         try:
@@ -97,27 +110,28 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         ds.close()
         update_task_status(db, subtask_id, "PROCESSING", 60.0, f"格点数据提取完成, 已提取 {len(grid_df)} 条格点记录")
         print(f"耗时: {time() - start_time:.2f} 秒, 共提取 {len(grid_df)} 条格点记录")
-        print(grid_df.head(3))
+        print(grid_df.head(2))
         print(grid_df.shape)
-        print(df_cleaned.head(3))
+        print(df_cleaned.head(2))
         print(df_cleaned.shape)
     
         # 5. 合并站点数据和格点数据
-        print(f"|--->({year}, {element}) 开始合并站点数据和格点数据...")
+        print(f"|--->({element}, {year}) 开始合并站点数据和格点数据...")
         start_time = time()
         df_sg = merge_sg_df(df_cleaned, grid_df, element)
         update_task_status(db, subtask_id, "PROCESSING", 80.0, f"站点数据和格点数据合并完成, 共得到 {len(df_sg)} 条记录")
         print(f"耗时: {time() - start_time:.2f} 秒, 共合并得到 {len(df_sg)} 条记录")
-        print(df_sg.head(3))
+        print(df_sg.head(2))
         print(df_sg.shape)
 
-        # 6. 将合并后的数据写入数据库
-        print(f"|--->({year}, {element}) 开始将合并后的数据写入数据库...")
-        start_time = time()
-        rows_affected = upsert_proc_station_grid_data(db, df_sg)
-        update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据处理完成, 共写入/更新 {rows_affected} 条记录")
-        print(f"|-- [Worker PID:{mp.current_process().pid}] {year} 年 {element} 数据处理完成, 影响 {rows_affected} 行")
-        print(f"耗时: {time() - start_time:.2f} 秒, 共写入/更新 {rows_affected} 条记录")
+        # 6. 将合并后的数据以parquet格式保存到临时目录
+        if not df_sg.empty:
+            print(f"|--->({element}, {year} 将 {len(df_sg)} 条合并后的数据写入临时文件: {output_file}")
+            df_sg.to_parquet(output_file, index=False)
+        else:
+            print(f"|--->({element}, {year} 警告: 合并后的数据为空, 跳过")
+        update_task_status(db, subtask_id, "COMPLETED", "100.0", f"{year} 年的 {element} 数据处理完成, 共得到 {len(df_sg)} 条记录, 已保存到临时文件: {output_file}")
+        print(f"|-- [Worker PID:{mp.current_process().pid}] {year} 年 {element} 数据处理完成, 共得到 {len(df_sg)} 条记录")
     
     except Exception as e:
         # 捕获任何异常, 更新任务状态为失败"FAILED"
@@ -158,13 +172,10 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
         num_workers = min(num_workers, cpu_count - 1) if cpu_count > 1 else 1
         print(f"|--> 主进程: 检测到 CPU 核心数: {cpu_count}, 将使用 {num_workers} 个工作进程")
         pool = mp_context.Pool(processes=num_workers)
-
         # 准备传递给每个worker的参数
         worker_args = [(info["sub_task_id"], info["element"], info["year"]) for info in sub_tasks_info]
         # 使用starmap_async 异步执行, 这样主进程可以继续监控进度
-        async_result = pool.starmap_async(process_yearly_element, worker_args)
-        # 获取异步结果
-        results = async_result.get()
+        pool.starmap_async(process_yearly_element, worker_args)
         # 关闭进程池
         pool.close()
         
@@ -175,32 +186,55 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
             if STOP_EVENT.is_set():
                 print(f"|--> 主进程: 检测到关闭信号, 正在终止任务 {task_id}...")
                 pool.terminate()  # 立即终止所有工作进程
-                update_task_status(db, task_id, "FAILED", (completed_count / total_tasks) * 100, "任务被用户取消")
+                update_task_status(db, task_id, "FAILED", (completed_count / total_tasks) * 80, "任务被用户取消")
                 break
             
             # 从数据库查询子任务状态来计算进度
             sub_tasks_from_db = get_subtasks_by_parent_id(db, task_id)
             completed_count = sum(1 for t in sub_tasks_from_db if t.status in ["COMPLETED", "FAILED"])
-            overall_progress = (completed_count / total_tasks) * 100
-            update_task_status(db, task_id, "PROCESSING", overall_progress, f"已完成 {completed_count}/{total_tasks} 个子任务")
-        
+            overall_progress = (completed_count / total_tasks) * 80
+            update_task_status(db, task_id, "PROCESSING", overall_progress, f"已完成 {completed_count}/{total_tasks + 1} 个子任务")
+            sleep(15)  # 每15秒检查一次进度
         pool.join()  # 确保所有进程都已结束
 
-        # 4. 所有子任务完成后, 更新最终状态
-        if not STOP_EVENT.is_set():
-            final_subtasks = get_subtasks_by_parent_id(db, task_id)
-            success_count = sum(1 for t in final_subtasks if t.status == "COMPLETED")
-            failed_count = sum(1 for t in final_subtasks if t.status == "FAILED")
-            final_progress = (success_count / total_tasks) * 100
-            final_text = f"任务完成: 成功: {success_count}, 失败:{failed_count}"
-            update_task_status(db, task_id, "COMPLETED", final_progress, final_text)
-            print(f"|--> 主进程: 任务 {task_id} 完成: {final_text}")
+        # 4. 将所有处理完成的临时文件导入数据库
+        import_subtask_id = str(uuid.uuid4())
+        create_task(
+            db, task_id=import_subtask_id, task_name="导入处理后的数据",
+            task_type="DataProcess_Import", params={},
+            parent_task_id=task_id 
+        )
+        
+        def import_progress_callback(current, total):
+            # 用于将importer的进度更新到数据库
+            import_progress = (current / total) * 100
+            update_task_status(db, import_subtask_id, "PROCESSING", import_progress, f"正在入库 {current}/{total} 年的数据...")
+            # 父任务的进度从80%提升到100%
+            overall_progress = 80 + (import_progress * 0.2)
+            update_task_status(db, task_id, "PROCESSING", overall_progress, f"正在导入数据({current}/{total})")
+
+        update_task_status(db, import_subtask_id, "PROCESSING", 0.0, "开始从临时文件加载数据...")
+        import_stats = import_proc_data_from_temp_files(db, TEMP_DATA_DIR, progress_callback=import_progress_callback)
+        update_task_status(db, import_subtask_id, "COMPLETED", 100.0, f"数据导入完成: {import_stats["message"]}")
+
+        # 5. 所有子任务完成后, 更新最终状态
+        update_task_status(db, task_id, "COMPLETED", 100.0, " 数据处理任务的所有子任务均已完成")
+        print(f"|--> 主进程: 任务 {task_id} 已完成")
+
     except Exception as e:
-        error_msg = f"任务分发失败: {str(e)}"
+        error_msg = f"任务执行失败: {str(e)}"
+        current_progress = db.query(TaskProgress.cur_progress).filter(TaskProgress.task_id == task_id).scalar() or 0
         update_task_status(db, task_id, "FAILED", 0.0, error_msg)
         print(f"|--> 主进程: 任务 {task_id} 发生错误: {error_msg}")
+
     finally:
         db.close()
+        # 清理临时文件
+        import shutil
+        if TEMP_DATA_DIR.exists():
+            shutil.rmtree(str(TEMP_DATA_DIR))
+            print(f"|--> 主进程: 临时文件已清理")
+
 
 
 if __name__ == "__main__":

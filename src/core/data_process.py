@@ -1,14 +1,18 @@
 # src/core/data_process.py
 import os
+import re
+import glob
 import pandas as pd
 import numpy as np
 import xarray as xr
-from datetime import datetime
-
+from typing import Optional, Callable
+from functools import reduce
+from sqlalchemy.orm import Session
 from ..db import crud
 from ..utils import file_io
-from ..core.data_mapping import cst_to_utc, ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING, NC_TO_DB_MAPPING
 from ..core.config import settings
+from ..core.data_mapping import cst_to_utc, ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING, NC_TO_DB_MAPPING
+
 
 
 def clean_station_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -63,3 +67,62 @@ def merge_sg_df(df_station: pd.DataFrame, df_grid: pd.DataFrame, element: str) -
     df_merged = pd.merge(df_station, df_grid, left_on=['station_id', 'timestamp'], right_on=['station_id_grid', 'time'], how="inner")
     df_merged.drop(columns=['time', 'station_id_grid'], inplace=True)
     return df_merged
+
+def import_proc_data_from_temp_files(db: Session, temp_dir: str, progress_callback: Optional[Callable[[int, int], None]] = None) -> dict:
+    """从临时文件中导入处理后的数据"""
+    print("|--> [Importer] 开始扫描临时文件...")
+    parquet_files = glob.glob(os.path.join(temp_dir, "**/*.parquet"), recursive=True)
+    
+    if not parquet_files:
+        print("|--> [Importer] 没有找到任何临时文件，导入过程结束。")
+        return {"files_processed": 0, "total_rows_affected": 0, "message": "未找到临时文件"}
+    
+    # 按年份对文件分组
+    grouped_files = {}
+    for file in parquet_files:
+        # 从文件名"element_year.parquet"中提取年份
+        match = re.search(r'_(\d{4})\.parquet$', os.path.basename(file))
+        if match:
+            year = match.group(1)
+            if year not in grouped_files:
+                grouped_files[year] = []
+            grouped_files[year].append(file)
+    
+    years_to_process = sorted(grouped_files.keys())
+    total_years = len(years_to_process)
+    total_rows_affected = 0
+    print(f"|--> [Importer] 发现 {len(parquet_files)} 个文件, 按年份分为 {total_years} 组, 准备导入...")
+
+    # 逐年处理
+    for i, year in enumerate(years_to_process):
+        year_files = grouped_files[year]
+        # 读取该年份的所有element文件到df列表中
+        df_list = [pd.read_parquet(file) for file in year_files if os.path.getsize(file) > 0]
+
+        if not df_list:
+            if progress_callback:
+                progress_callback(i + 1, total_years)
+            continue
+
+        # 使用reduce合并当年的所有element的DataFrame
+        merged_df = reduce(
+            lambda left, right: pd.merge(
+                left, right, 
+                on=['station_id', 'station_name', 'lat', 'lon', 'timestamp', 'year', 'month', 'day', 'hour'], 
+                how='outer'),
+            df_list
+        )
+        print(f"|--> [Importer] 正在将 {year} 年的 {len(df_list)} 个文件({len(merged_df)}行)合并数据写入数据库...")
+        rows_affected = crud.upsert_proc_station_grid_data(db, merged_df)
+        total_rows_affected += rows_affected if rows_affected else 0
+
+        if progress_callback:
+            progress_callback(i + 1, total_years)
+
+    final_message = f"数据导入完成, 共处理 {len(parquet_files)} 个文件, ({total_years}年), 写入/更新 {total_rows_affected} 行数据"
+    print(f"|--> [Importer] {final_message}")
+    return {
+        "files_processed": len(parquet_files),
+        "total_rows_affected": total_rows_affected,
+        "message": final_message
+    }
