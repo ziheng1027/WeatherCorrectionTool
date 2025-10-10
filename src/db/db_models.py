@@ -1,8 +1,10 @@
 # src/db/db_models.py
+import json
+from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from .database import Base
-import json
+
 
 class RawStationData(Base):
     """原始站点数据表"""
@@ -70,8 +72,8 @@ class TaskProgress(Base):
     parent_task_id = Column(String, index=True, nullable=True, comment="父任务的ID")
     task_type = Column(String, comment="任务类型, 如:DataImport")
     status = Column(String, default="PENDING", comment="任务状态, 如: PENDING, PROCESSING, COMPLETED, FAILED")
-    start_time = Column(DateTime(timezone=True), server_default=func.now(), comment="任务开始时间")
-    end_time = Column(DateTime(timezone=True), nullable=True, comment="任务结束时间")
+    start_time = Column(DateTime, default=datetime.now(), comment="任务开始时间")
+    end_time = Column(DateTime, nullable=True, comment="任务结束时间")
     task_params = Column(Text, comment="任务参数的JSON字符串")
     cur_progress = Column(Float, default=0.0, comment="当前进度(0.0 to 100.0)")
     progress_text = Column(String, default="任务已提交, 等待执行...", comment="任务进度的文字描述")
