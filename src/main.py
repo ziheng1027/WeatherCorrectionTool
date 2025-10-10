@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from src.api.routers import config_manage, data_import, data_preview
+from src.api.routers import config_manage, data_import, data_preview, data_process
 from src.core.config import STOP_EVENT
 
 

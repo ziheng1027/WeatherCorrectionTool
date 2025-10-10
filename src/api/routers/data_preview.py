@@ -17,7 +17,7 @@ router = APIRouter(
 )
 
 
-@router.get("/stations", summary="获取所有站点名称列表")
+@router.get("/stations", summary="获取所有站点名称和经纬度列表")
 def get_all_station_info():
     """
     获取所有站点名称和经纬度

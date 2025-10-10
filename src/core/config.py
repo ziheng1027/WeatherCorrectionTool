@@ -1,7 +1,7 @@
 # src/core/config.py
 import json
 import threading
-from typing import Dict
+from typing import Dict, List, Any
 from pathlib import Path
 from pydantic import BaseModel, DirectoryPath, FilePath
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,7 +28,7 @@ def save_config_json(config_data: dict):
 
 class Settings(BaseSettings):
     """配置文件读取类"""
-    config: Dict[str, str] = load_config_json()
+    config: Dict[str, Any] = load_config_json()
     STATION_DATA_DIR: DirectoryPath = DirectoryPath(config.get("station_data_dir", ""))
     GRID_DATA_DIR: DirectoryPath = DirectoryPath(config.get("grid_data_dir", ""))
     
@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     CORRECTION_OUTPUT_DIR: Path = Path(config.get("correction_output_dir", ""))
 
     AVAILABLE_ELEMENTS: list[str] = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]
+    CST_YEARS: List[int] = config.get("cst_years", [])
 
 
 settings = Settings()

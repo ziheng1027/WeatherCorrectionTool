@@ -36,6 +36,13 @@ ELEMENT_TO_NC_MAPPING = {
     "2分钟平均风速": "wind_velocity"
 }
 
+NC_TO_DB_MAPPING = {
+    "tmp": "temperature",
+    "rh": "humidity",
+    "pre": "precipitation_1h",
+    "wind_velocity": "wind_speed_2min"
+}
+
 def get_elements_mapping():
     """获取变量名称的映射关系"""
     vars_map = {
@@ -86,16 +93,3 @@ def cst_to_utc(cst_times):
         cst_datetimes = pd.to_datetime(cst_times, format='%Y%m%d%H')
         utc_datetimes = cst_datetimes - pd.Timedelta(hours=8)
         return utc_datetimes.strftime('%Y%m%d%H').astype(int).tolist()
-
-def utc_to_cst(utc_times):
-    """世界时转北京时"""
-    if isinstance(utc_times, pd.Series):
-        # 处理DataFrame列
-        utc_datetimes = pd.to_datetime(utc_times.astype(str), format='%Y%m%d%H')
-        cst_datetimes = utc_datetimes + pd.Timedelta(hours=8)
-        return cst_datetimes.dt.strftime('%Y%m%d%H').astype(int)
-    else:
-        # 处理列表或单个值
-        utc_datetimes = pd.to_datetime(utc_times, format='%Y%m%d%H')
-        cst_datetimes = utc_datetimes + pd.Timedelta(hours=8)
-        return cst_datetimes.strftime('%Y%m%d%H').astype(int).tolist()

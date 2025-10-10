@@ -1,7 +1,11 @@
 # src/db/crud.py
 import pandas as pd
 from datetime import datetime
+from typing import List
+from sqlalchemy import text, exists
 from sqlalchemy.orm import Session
+# 导入针对 SQLite 的特殊 insert 语句构造器
+from sqlalchemy.dialects.sqlite import insert
 from . import db_models
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
 
@@ -156,23 +160,43 @@ def bulk_insert_raw_station_data(db: Session, data_df: pd.DataFrame):
         chunksize=40000
     )
 
-def bulk_insert_proc_station_data(db: Session, data_df: pd.DataFrame):
+def upsert_proc_station_grid_data(db: Session, df_sg: pd.DataFrame):
     """
-    将Pandas DataFrame中的站点数据批量导入数据库 - 处理与合并后的数据。
+    使用数据库原生的 "INSERT ... ON CONFLICT DO UPDATE"功能,
+    将处理后的站点+格点数据高效的"upsert"到数据库中。
+    """
+    if df_sg.empty:
+        return
+    
+    records_to_process = df_sg.to_dict(orient="records")
+    table = db_models.ProcStationGridData.__table__
+    stmt = insert(table)
 
-    :param db: SQLAlchemy数据库会话.
-    :param data_df: 包含待导入数据的DataFrame.
-                    列名应与RawStationData模型中的字段名匹配
-                    (station_id, station_name, timestamp, temperature, etc.).
-    """
-    # to_sql 是pandas提供的一个非常高效的批量插入方法
-    data_df.to_sql(
-        name=db_models.ProcStationGridData.__tablename__,  # 指定要插入的表名，使用模型中的表名
-        con=db.bind,        # 获取底层的数据库连接，确保数据能正确写入
-        if_exists='append', # 如果表已存在，则追加数据而不是覆盖或报错
-        index=False,        # 不将DataFrame的索引写入数据库，只写入实际数据
-        chunksize=40000
+    # 动态构建需要更新的列, 确保在重复处理"温度"时, 不会覆盖"湿度"等其他列
+    update_columns = [
+        col for col in df_sg.columns
+        if col not in ["id", "station_id", "timestamp"] # 不更新主键和唯一约束键
+    ]
+    update_dict = {col: getattr(stmt.excluded, col) for col in update_columns}
+
+    if not update_dict:
+        # 如果除了主键外没有其他列, 说明数据有问题或者无需更新
+        print("警告: 尝试upsert的数据中没有可更新的列, 操作已跳过")
+        return
+
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["station_id", "timestamp"],  # 指定唯一约束键
+        set_=update_dict  # 指定需要更新的列
     )
+
+    try:
+        result = db.execute(stmt, records_to_process)
+        db.commit()
+        return result.rowcount
+    except Exception as e:
+        print(f"Error occurred during upsert: {e}")
+        db.rollback()
+        raise
 
 """--------------------数据预览--------------------"""
 def get_raw_station_data(db: Session, station_name: str, element: str, start_time: datetime, end_time: datetime):
@@ -187,40 +211,73 @@ def get_raw_station_data(db: Session, station_name: str, element: str, start_tim
     db_column = getattr(db_models.RawStationData, db_column_name)
 
     # 构建查询
+    query = text(f"""
+        SELECT 
+            station_name,
+            lat,
+            lon,
+            timestamp,
+            {db_column_name} AS value
+        FROM raw_s_data
+        WHERE 
+            station_name = :station_name
+            AND timestamp >= :start_time
+            AND timestamp <= :end_time
+        ORDER BY timestamp
+    """)
+    
+    result = db.execute(
+        query,
+        {
+            "station_name": station_name,
+            "start_time": start_time,
+            "end_time": end_time
+        }
+    )
+
+    return result.fetchall()
+"""--------------------数据处理--------------------"""
+def get_raw_station_data_by_year(db: Session, db_column_name: str, year: int, chunk_size: int = 8760) -> pd.DataFrame:
+    """
+    查询指定年份和要素的原始站点数据。
+    """
+    db_column = getattr(db_models.RawStationData, db_column_name)
+
     query = db.query(
+        db_models.RawStationData.station_id,
         db_models.RawStationData.station_name,
         db_models.RawStationData.lat,
         db_models.RawStationData.lon,
         db_models.RawStationData.timestamp,
-        db_column.label("value")  # 将查询的列重命名为'value'，方便后续统一处理
-    ).filter(
-        db_models.RawStationData.station_name == station_name,
-        db_models.RawStationData.timestamp >= start_time,
-        db_models.RawStationData.timestamp <= end_time
-    ).order_by(
-        db_models.RawStationData.timestamp
-    )
-    
-    return query.all()
-
-"""--------------------数据处理--------------------"""
-def get_raw_station_data_by_year(db: Session, db_column_name: str, year: int) -> pd.DataFrame:
-    """
-    查询指定年份和要素的原始站点数据。
-    """
-    # 获取模型中对应的列对象
-    db_column = getattr(db_models.RawStationData, db_column_name)
-
-    # 构建查询
-    query = db.query(
-        db_models.RawStationData.station_id,
-        db_models.RawStationData.lat,
-        db_models.RawStationData.lon,
-        db_models.RawStationData.timestamp,
+        db_models.RawStationData.year,
+        db_models.RawStationData.month,
+        db_models.RawStationData.day,
+        db_models.RawStationData.hour,
         db_column.label("station_value")
     ).filter(
-        db_models.RawStationData.year == year
+        db_models.RawStationData.year == year,
+        db_column.isnot(None) # 确保该要素列有数据
     )
-    
-    # 使用pandas直接从SQL查询读取数据，效率更高
-    return pd.read_sql(query.statement, db.bind)
+    df_iterator = pd.read_sql(query.statement, db.bind, chunksize=chunk_size)
+    return df_iterator
+
+def check_existed_element_by_year(db: Session, element: str, year: int) -> bool:
+    """
+    检查指定年份的指定要素是否已经存在。
+    """
+    db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
+    if not db_column_name:
+        raise ValueError(f"无效的要素名称: {element}")
+
+    # 获取模型中对应的列对象
+    db_column = getattr(db_models.ProcStationGridData, db_column_name)
+    # 构建查询-只检查一条记录是否存在
+    query = db.query(
+        exists().where(
+            db_models.ProcStationGridData.year == year,
+            db_column.isnot(None) # 检查该要素列是否有非空值
+        )
+    )
+
+    # scalar() 方法返回第一个元素的值, 如果存在则为 True, 否则为 False
+    return db.execute(query).scalar()

@@ -1,5 +1,5 @@
 # src/db/db_models.py
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from .database import Base
 import json
@@ -53,6 +53,11 @@ class ProcStationGridData(Base):
     precipitation__1h_grid = Column(Float, nullable=True)   # 降水格点值
     wind_speed_2min = Column(Float, nullable=True)          # 风速
     wind_speed_2min_grid = Column(Float, nullable=True)     # 风速格点值
+
+    # 复合唯一约束, 确保station_id + timestamp唯一
+    __table_args__ = (
+        UniqueConstraint('station_id', 'timestamp', name='station_timestamp_uc'),
+    )
     
 
 class TaskProgress(Base):

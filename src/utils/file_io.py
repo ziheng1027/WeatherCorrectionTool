@@ -74,7 +74,7 @@ def safe_open_mfdataset(grid_files, **kwargs):
                         # 统一使用第一个文件的坐标作为标准
                         ds = ds.assign_coords(lat=ref_lat, lon=ref_lon)
                         ds_list.append(ds)
-                        print(f"文件 {i+1}/{len(grid_files)} 坐标统一完成")
+                        # print(f"文件 {i+1}/{len(grid_files)} 坐标统一完成")
                     except Exception as file_error:
                         print(f"处理文件 {file} 时出错: {file_error}")
                         # 如果分块处理失败，尝试不使用分块
@@ -82,7 +82,7 @@ def safe_open_mfdataset(grid_files, **kwargs):
                             ds = xr.open_dataset(file)
                             ds = ds.assign_coords(lat=ref_lat, lon=ref_lon)
                             ds_list.append(ds)
-                            print(f"文件 {i+1}/{len(grid_files)} 坐标统一完成(无分块)")
+                            # print(f"文件 {i+1}/{len(grid_files)} 坐标统一完成(无分块)")
                         except:
                             raise
                 
