@@ -157,7 +157,7 @@ def get_all_pending_files(db: Session = Depends(get_db)):
     """
     查询历史上所有待处理的文件名列表。
     """
-    filenames, _ = crud.get_global_filenames_by_status(db, status="PENDING")
+    filenames, _ = crud.get_global_filenames_by_status(db, task_type="DataImport_SubTask", status="PENDING")
     return {"files": filenames}
 
 
