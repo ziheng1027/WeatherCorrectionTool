@@ -76,12 +76,6 @@ def run_station_data_import(task_id: str, dir: str):
                 crud.update_task_status(db, sub_task.task_id, "PROCESSING", 0.0, "开始处理文件...")
                 print(f"|--> 开始处理文件 {file_name}")
 
-                # # 先删除重复数据再插入新数据
-                # deleted_rows = crud.delete_raw_station_data_by_filename(db, file_name)
-                # if deleted_rows > 0:
-                #     print(f"成功删除了 {deleted_rows} 行重复数据")
-                # crud.update_task_status(db, sub_task.task_id, "PROCESSING", 0.0, f"已删除 {deleted_rows} 行重复数据")
-
                 # 使用read_csv的chunksize参数创建迭代器
                 df_iterator = pd.read_csv(file_path, usecols=REQUIRED_COLUMNS, chunksize=CHUNK_SIZE)
 

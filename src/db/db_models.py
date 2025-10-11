@@ -27,9 +27,6 @@ class RawStationData(Base):
     precipitation_1h = Column(Float, nullable=True)     # 降水
     wind_speed_2min = Column(Float, nullable=True)      # 风速
 
-    # 数据源自哪个文件？
-    source_file = Column(String, index=True, comment="原始CSV文件名")
-
     # 添加复合唯一约束, 确保station_id + timestamp唯一
     __table_args__ = (
         UniqueConstraint('station_id', 'timestamp', name='raw_station_timestamp_uc'),
