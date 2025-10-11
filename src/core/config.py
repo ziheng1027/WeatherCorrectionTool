@@ -35,7 +35,8 @@ class Settings(BaseSettings):
     STATION_INFO_PATH: FilePath = FilePath(config.get("station_info_path", ""))
     DEM_DATA_PATH: FilePath = FilePath(config.get("dem_data_path", ""))
 
-    MODELS_OUTPUT_DIR: Path = Path(config.get("models_output_dir", ""))
+    MODEL_CONFIG_DIR: DirectoryPath = DirectoryPath(config.get("model_config_dir", ""))
+    MODEL_OUTPUT_DIR: Path = Path(config.get("model_output_dir", ""))
     CORRECTION_OUTPUT_DIR: Path = Path(config.get("correction_output_dir", ""))
 
     AVAILABLE_ELEMENTS: list[str] = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]

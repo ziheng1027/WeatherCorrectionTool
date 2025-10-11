@@ -18,6 +18,8 @@ def update_source_data_dirs(dirs: DataSourceRequest):
         cur_config = load_config_json()
         cur_config["station_data_dir"] = str(dirs.station_data_dir)
         cur_config["grid_data_dir"] = str(dirs.grid_data_dir)
+        cur_config["station_info_path"] = str(dirs.station_info_path)
+        cur_config["dem_data_path"] = str(dirs.dem_data_path)
         # 将更新后的配置写入原来的配置文件
         save_config_json(cur_config)
         return MessageResponse(message="数据源目录路径更新成功")

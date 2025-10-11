@@ -1,5 +1,5 @@
 # src/core/schemas.py
-from pydantic import BaseModel, DirectoryPath, Field
+from pydantic import BaseModel, DirectoryPath, FilePath, Field
 from typing import Optional, Any, Literal, List
 from datetime import datetime
 from .config import settings
@@ -48,8 +48,26 @@ class TaskDetailsResponse(BaseModel):
 
 class DataSourceRequest(BaseModel):
     """用于接受数据源路径的请求体模型"""
-    station_data_dir: DirectoryPath    # 站点数据路径
-    grid_data_dir: DirectoryPath       # 网格数据路径
+    station_data_dir: DirectoryPath = Field(
+        default=settings.STATION_DATA_DIR,
+        example = str(settings.STATION_DATA_DIR),
+        description="站点数据目录"
+    )
+    grid_data_dir: DirectoryPath = Field(
+        default=settings.GRID_DATA_DIR,
+        example = str(settings.GRID_DATA_DIR),
+        description="网格数据目录"
+    )
+    station_info_path: FilePath = Field(
+        default=settings.STATION_INFO_PATH,
+        example = str(settings.STATION_INFO_PATH),
+        description="站点信息路径"
+    )
+    dem_data_path: FilePath = Field(
+        default=settings.DEM_DATA_PATH,
+        example = str(settings.DEM_DATA_PATH),
+        description="DEM数据路径"
+    )
 
 
 class ConfigRequest(BaseModel):
