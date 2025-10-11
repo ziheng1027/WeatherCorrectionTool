@@ -179,37 +179,42 @@ def delete_pending_data_import_subtasks(db: Session) -> int:
     db.commit()
     return num_deleted
 
-def delete_raw_station_data_by_filename(db: Session, filename: str):
+def upsert_raw_station_data(db: Session, df: pd.DataFrame):
     """
-    根据源文件名称删除原始站点数据表中的记录
+    使用数据库原生的 "INSERT ... ON CONFLICT DO UPDATE"功能,
+    将处理后的站点数据高效的"upsert"到数据库中。
+    """
+    if df.empty:
+        return
+    
+    records_to_process = df.to_dict(orient="records")
+    table = db_models.RawStationData.__table__
+    stmt = insert(table)
 
-    :param db: SQLAlchemy数据库会话.
-    :param filename: 重复数据的源文件名称.
-    :return: 被删除的记录行数.
-    """
-    num_deleted = db.query(db_models.RawStationData).filter(
-        db_models.RawStationData.source_file == filename
-    ).delete(synchronize_session=False)
-    db.commit()
-    return num_deleted
+    # 在冲突时, 更新df中存在的所有列(除了主键和唯一键)
+    update_columns = [
+        col for col in df.columns
+        if col not in ["id", "station_id", "timestamp"] # 不更新主键和唯一约束键
+    ]
+    update_dict = {col: getattr(stmt.excluded, col) for col in update_columns}
 
-def bulk_insert_raw_station_data(db: Session, data_df: pd.DataFrame):
-    """
-    将Pandas DataFrame中的站点数据批量导入数据库 - 原始站点数据。
+    # 如果没有可更新的列, 则不执行更新操作
+    if not update_dict:
+        stmt = stmt.on_conflict_do_nothing(index_elements=["station_id", "timestamp"])  # 指定唯一约束键
+    else:
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["station_id", "timestamp"],  # 指定唯一约束键
+            set_=update_dict  # 指定需要更新的列
+        )
 
-    :param db: SQLAlchemy数据库会话.
-    :param data_df: 包含待导入数据的DataFrame.
-                    列名应与RawStationData模型中的字段名匹配
-                    (station_id, station_name, timestamp, temperature, etc.).
-    """
-    # to_sql 是pandas提供的一个非常高效的批量插入方法
-    data_df.to_sql(
-        name=db_models.RawStationData.__tablename__,  # 指定要插入的表名，使用模型中的表名
-        con=db.bind,        # 获取底层的数据库连接，确保数据能正确写入
-        if_exists='append', # 如果表已存在，则追加数据而不是覆盖或报错
-        index=False,        # 不将DataFrame的索引写入数据库，只写入实际数据
-        chunksize=40000
-    )
+    try:
+        result = db.execute(stmt, records_to_process)
+        db.commit()
+        return result.rowcount
+    except Exception as e:
+        print(f"Error occurred during upsert: {e}")
+        db.rollback()
+        raise
 
 def upsert_proc_station_grid_data(db: Session, df_sg: pd.DataFrame):
     """

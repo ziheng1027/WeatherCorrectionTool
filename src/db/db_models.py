@@ -30,6 +30,11 @@ class RawStationData(Base):
     # 数据源自哪个文件？
     source_file = Column(String, index=True, comment="原始CSV文件名")
 
+    # 添加复合唯一约束, 确保station_id + timestamp唯一
+    __table_args__ = (
+        UniqueConstraint('station_id', 'timestamp', name='raw_station_timestamp_uc'),
+    )
+
 
 class ProcStationGridData(Base):
     """处理后的包含站点和格点值的数据表"""
@@ -58,7 +63,7 @@ class ProcStationGridData(Base):
 
     # 复合唯一约束, 确保station_id + timestamp唯一
     __table_args__ = (
-        UniqueConstraint('station_id', 'timestamp', name='station_timestamp_uc'),
+        UniqueConstraint('station_id', 'timestamp', name='proc_station_timestamp_uc'),
     )
     
 

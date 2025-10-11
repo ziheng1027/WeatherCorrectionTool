@@ -5,6 +5,7 @@
 ├── src  
 │   ├── api                     # api接口  
 │   │   ├── config_manage.py    # 配置管理api  
+│   │   ├── cancel_task.py      # 取消任务api  
 │   │   ├── data_import.py      # 数据导入模块api  
 │   │   ├── data_preview.py     # 数据预览模块api  
 │   │   ├── data_pivot.py       # 数据透视模块api  
@@ -12,6 +13,10 @@
 │   │   ├── model_train.py      # 模型训练模块api  
 │   │   ├── data_correct.py     # 数据订正模块api  
 │   ├── core                    # 核心模块  
+│   │   ├── config.py           # 配置管理
+│   │   ├── data_mapping.py     # 数据映射
+│   │   ├── data_preview.py     # 数据预览处理函数
+│   │   ├── data_process.py     # 数据处理函数
 │   │   ├── schemas.py          # pydantic模型定义  
 │   ├── db                      # 数据库模块  
 │   │   ├── db_models.py        # 数据库模型定义  
@@ -23,7 +28,6 @@
 │   ├── tasks                   # 后台任务  
 │   │   ├── data_import.py      # 数据导入任务  
 │   │   ├── data_process.py     # 数据处理任务  
-│   │   ├── data_pivot.py       # 数据透视任务  
 │   │   ├── model_train.py      # 模型训练任务  
 │   │   ├── data_correct.py     # 数据订正任务  
 ├── main.py                     # api入口  
