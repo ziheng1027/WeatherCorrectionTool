@@ -3,6 +3,8 @@ import xarray as xr
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from threading import Lock
+from typing import Dict, Any
 from ..core.data_mapping import ELEMENT_TO_NC_MAPPING
 from ..utils.file_io import find_nc_file_for_timestamp
 
@@ -34,7 +36,11 @@ def get_grid_data_at_time(element: str, timestamp: datetime):
         
         return lats, lons, values
     
-def get_grid_time_series_for_coord(element: str, lat: float, lon: float, start_time: datetime, end_time: datetime):
+def get_grid_time_series_for_coord(
+        task_id: str, progress_tasks: Dict[str, Any],
+        progress_lock: Lock,
+        element: str, lat: float, lon: float, start_time: datetime, end_time: datetime
+    ):
     """
     获取指定坐标和时间范围内的格点数据时间序列。
 
@@ -45,41 +51,62 @@ def get_grid_time_series_for_coord(element: str, lat: float, lon: float, start_t
     :param end_time: 结束时间
     :return: timestamps(时间戳列表), values(数值列表)
     """
-    # 1. 使用pandas生成每小时的时间戳序列
-    hourly_timestamps = pd.date_range(start=start_time, end=end_time, freq='H')
-    
-    values_out = []
-    timestamps_out = []
-
-    nc_var = ELEMENT_TO_NC_MAPPING.get(element)
-    if not nc_var:
-        raise ValueError(f"无效的要素名称: {element}")
-
-    # 2. 循环遍历每个小时
-    for ts in hourly_timestamps:
-        try:
-            # 2.1 定位当前时间戳对应的.nc文件
-            file_path = find_nc_file_for_timestamp(element, ts)
-            
-            # 2.2 使用xarray打开文件并提取数据
-            with xr.open_dataset(file_path) as ds:
-                # 使用 .sel 方法和 'nearest' 策略找到最近点的值
-                value = ds[nc_var].sel(lat=lat, lon=lon, method='nearest').item()
-                
-                # xarray可能会返回numpy的浮点数类型，转换为标准的Python float
-                if np.isnan(value):
-                    values_out.append(None)
-                else:
-                    values_out.append(float(value))
-
-        except FileNotFoundError:
-            # 如果某个小时的文件找不到，我们记录一个None值
-            values_out.append(None)
-        except Exception as e:
-            # 其他潜在错误（如文件损坏、变量名错误），同样记录None
-            print(f"处理时间 {ts} 时出错: {e}")
-            values_out.append(None)
+    try:
+        hourly_timestamps = pd.date_range(start=start_time, end=end_time, freq='H')
+        total_timestamps = len(hourly_timestamps)
         
-        timestamps_out.append(ts)
+        if total_timestamps == 0:
+            with progress_lock:
+                progress_tasks[task_id]["status"] = "COMPLETED"
+                progress_tasks[task_id]["progress"] = 100.0
+                progress_tasks[task_id]["result"] = {"lat": lat, "lon": lon, "timestamps": [], "values": []}
+            return
 
-    return timestamps_out, values_out
+        values_out = []
+        timestamps_out = []
+        nc_var = ELEMENT_TO_NC_MAPPING.get(element)
+        if not nc_var:
+            raise ValueError(f"无效的要素名称: {element}")
+
+        # 循环遍历每个小时
+        for i, ts in enumerate(hourly_timestamps):
+            try:
+                file_path = find_nc_file_for_timestamp(element, ts)
+                with xr.open_dataset(file_path) as ds:
+                    value = ds[nc_var].sel(lat=lat, lon=lon, method='nearest').item()
+                    if np.isnan(value):
+                        values_out.append(None)
+                    else:
+                        values_out.append(float(value))
+            except FileNotFoundError:
+                values_out.append(None)
+            
+            timestamps_out.append(ts.to_pydatetime())
+
+            # [核心] 直接更新共享字典中的进度
+            with progress_lock:
+                # 确保任务ID仍然存在 (可能用户取消了)
+                if task_id in progress_tasks:
+                    progress = ((i + 1) / total_timestamps) * 100
+                    progress_tasks[task_id]["progress"] = round(progress, 2)
+                    progress_tasks[task_id]["status"] = "PROCESSING"
+
+        # 任务完成，存储最终结果
+        final_result = {
+            "lat": lat,
+            "lon": lon,
+            "timestamps": timestamps_out,
+            "values": values_out
+        }
+        with progress_lock:
+            if task_id in progress_tasks:
+                progress_tasks[task_id]["status"] = "COMPLETED"
+                progress_tasks[task_id]["result"] = final_result
+                progress_tasks[task_id]["progress"] = 100.0
+
+    except Exception as e:
+        # 如果发生任何错误, 记录错误状态
+        with progress_lock:
+            if task_id in progress_tasks:
+                progress_tasks[task_id]["status"] = "FAILED"
+                progress_tasks[task_id]["error"] = str(e)

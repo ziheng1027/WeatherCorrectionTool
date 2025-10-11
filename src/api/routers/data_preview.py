@@ -1,8 +1,9 @@
 # src/api/routers/data_preview.py
-
+import uuid
 from typing import List
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from threading import Lock
 from ...db import crud
 from ...core import schemas
 from ...core.config import settings
@@ -10,6 +11,10 @@ from ...core.data_mapping import get_name_to_id_mapping
 from ...core.data_preview import get_grid_data_at_time, get_grid_time_series_for_coord
 from ...db.database import SessionLocal, get_db
 
+
+# 存储进度查询任务的状态
+PROGRESS_TASKS = {}
+progress_lock = Lock()
 
 router = APIRouter(
     prefix="/data-preview",
@@ -71,26 +76,63 @@ def get_grid_data(request: schemas.GridDataRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/grid/timeseries", response_model=schemas.GridTimeSeriesResponse, summary="获取单点格点数据时序")
-def get_grid_timeseries(request: schemas.GridTimeSeriesRequest):
+@router.post("/grid-time-series", response_model=schemas.TaskCreationResponse, summary="提交一个获取格点时间序列的后台任务")
+def submit_grid_time_series_task(request: schemas.GridTimeSeriesRequest, background_tasks: BackgroundTasks):
     """
-    根据经纬度坐标、要素和时间范围，提取并返回该点的格点数据时间序列。
+    提交一个后台任务来提取指定坐标和时间范围的格点数据时间序列。
+    此接口会立即返回一个task_id, 前端需要使用此ID轮询状态接口。
     """
-    try:
-        timestamps, values = get_grid_time_series_for_coord(
-            element=request.element,
-            lat=request.lat,
-            lon=request.lon,
-            start_time=request.start_time,
-            end_time=request.end_time
-        )
-        return schemas.GridTimeSeriesResponse(
-            lat=request.lat,
-            lon=request.lon,
-            timestamps=timestamps,
-            values=values
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
+    task_id = str(uuid.uuid4())
+    
+    # 在任务开始前，在共享字典中为该任务创建一个占位符
+    with progress_lock:
+        # 清理旧的已完成任务, 防止内存增长
+        for old_task_id, task_details in list(PROGRESS_TASKS.items()):
+            if task_details["status"] in ["COMPLETED", "FAILED"]:
+                del PROGRESS_TASKS[old_task_id]
+
+        PROGRESS_TASKS[task_id] = {
+            "status": "PENDING", # 状态: PENDING -> PROCESSING -> COMPLETED / FAILED
+            "progress": 0.0,
+            "result": None,
+            "error": None
+        }
+
+    # [核心] 将真正的耗时函数作为后台任务添加
+    # FastAPI会在发送响应后，在后台线程中运行此函数
+    background_tasks.add_task(
+        get_grid_time_series_for_coord,
+        task_id=task_id,
+        progress_tasks=PROGRESS_TASKS,
+        progress_lock=progress_lock,
+        element=request.element,
+        lat=request.lat,
+        lon=request.lon,
+        start_time=request.start_time,
+        end_time=request.end_time
+    )
+
+    # 立即返回，告知前端任务已创建
+    return schemas.TaskCreationResponse(message="后台任务已创建", task_id=task_id)
+
+
+@router.get("/grid-time-series/status/{task_id}", summary="查询格点时间序列任务的状态和结果")
+def get_grid_time_series_status(task_id: str):
+    """
+    前端通过此接口轮询任务状态、进度和最终结果。
+    当任务完成时 (`status`为"COMPLETED"), `result`字段会包含完整的数据。
+    """
+    with progress_lock:
+        task = PROGRESS_TASKS.get(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        response = {
+            "task_id": task_id,
+            "status": task["status"], 
+            "progress": task["progress"],
+            "result": task["result"],
+            "error": task["error"]
+        }
+
+    return response
