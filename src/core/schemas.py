@@ -135,9 +135,10 @@ class DataProcessingRequest(BaseModel):
 class ModelTrainRequest(BaseModel):
     """用于接受模型训练请求的请求体模型"""
     element: AVAILABLE_ELEMENTS
-    start_time: datetime
-    end_time: datetime
+    start_year: str
+    end_year: str
+    season: str
     test_split_method: Literal["按年份划分", "按站点划分"]
     test_set_values: list[str]  # 年份列表或站点列表
-    model: Literal["XGBoost", "LightGBM", "随机森林"]
+    model: Literal["XGBoost", "LightGBM"]
     model_params: dict
