@@ -52,7 +52,7 @@ def get_grid_time_series_for_coord(
     :return: timestamps(时间戳列表), values(数值列表)
     """
     try:
-        hourly_timestamps = pd.date_range(start=start_time, end=end_time, freq='H')
+        hourly_timestamps = pd.date_range(start=start_time, end=end_time, freq='h')
         total_timestamps = len(hourly_timestamps)
         
         if total_timestamps == 0:
