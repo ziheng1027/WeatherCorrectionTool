@@ -25,6 +25,11 @@ def save_config_json(config_data: dict):
         json.dump(config_data, f, indent=4, ensure_ascii=False)
 
 
+def load_model_config(model_config_path: str):
+    """加载模型配置文件"""
+    with open(model_config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
 class Settings(BaseSettings):
     """配置文件读取类"""
     config: Dict[str, Any] = load_config_json()

@@ -353,7 +353,7 @@ def get_proc_data_to_build_dataset(db: Session, element: str, start_year: str, e
         # 构建查询
         query = text(f"""
             SELECT
-                station_id, lat, lon, year, month, day, hour, {db_column_name}, {db_column_name}_grid
+                station_id, station_name, lat, lon, year, month, day, hour, {db_column_name}, {db_column_name}_grid
             FROM proc_sg_data
             WHERE
                 year >= :start_year
