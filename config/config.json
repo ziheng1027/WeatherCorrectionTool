@@ -8,5 +8,11 @@
     "model_output_dir": "output/models",
     "correction_output_dir": "output/correction",
     
-    "cst_years": [2022, 2023]
+    "cst_years": [2022, 2023],
+    "lags_config": {
+        "温度": [48, 24, 12, 6, 3, 1],
+        "相对湿度": [48, 24, 12, 6, 3, 1],
+        "过去1小时降水量": [48, 24, 6, 3, 2, 1],
+        "2分钟平均风速": [48, 24, 6, 3, 2, 1]
+    }
 }

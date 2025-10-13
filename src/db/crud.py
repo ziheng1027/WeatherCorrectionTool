@@ -259,39 +259,43 @@ def get_raw_station_data(db: Session, station_name: str, element: str, start_tim
     """
     查询指定站点、要素和时间范围的原始数据。
     """
-    db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
-    if not db_column_name:
-        raise ValueError(f"无效的要素名称: {element}")
+    try:
+        db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
+        if not db_column_name:
+            raise ValueError(f"无效的要素名称: {element}")
 
-    # 获取模型中对应的列对象
-    db_column = getattr(db_models.RawStationData, db_column_name)
+        # 构建查询
+        query = text(f"""
+            SELECT 
+                station_name,
+                lat,
+                lon,
+                timestamp,
+                {db_column_name} AS value
+            FROM raw_s_data
+            WHERE 
+                station_name = :station_name
+                AND timestamp >= :start_time
+                AND timestamp <= :end_time
+            ORDER BY timestamp
+        """)
 
-    # 构建查询
-    query = text(f"""
-        SELECT 
-            station_name,
-            lat,
-            lon,
-            timestamp,
-            {db_column_name} AS value
-        FROM raw_s_data
-        WHERE 
-            station_name = :station_name
-            AND timestamp >= :start_time
-            AND timestamp <= :end_time
-        ORDER BY timestamp
-    """)
+        result = db.execute(
+            query,
+            {
+                "station_name": station_name,
+                "start_time": start_time,
+                "end_time": end_time
+            }
+        )
+
+        return result.fetchall()
     
-    result = db.execute(
-        query,
-        {
-            "station_name": station_name,
-            "start_time": start_time,
-            "end_time": end_time
-        }
-    )
+    except Exception as e:
+        print(f"Error occurred during querying raw station data: {e}")
+        db.rollback()
+        return None
 
-    return result.fetchall()
 """--------------------数据处理--------------------"""
 def get_raw_station_data_by_year(db: Session, db_column_name: str, year: int, chunk_size: int = 8760) -> pd.DataFrame:
     """
@@ -337,3 +341,35 @@ def check_existed_element_by_year(db: Session, element: str, year: int) -> bool:
 
     # scalar() 方法返回第一个元素的值, 如果存在则为 True, 否则为 False
     return db.execute(query).scalar()
+
+"""--------------------模型训练--------------------"""
+def get_proc_data_to_build_dataset(db: Session, element: str, start_year: str, end_year: str):
+    """根据起止年份从数据库中获取指定要素的sg数据"""
+    try:
+        db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
+        if not db_column_name:
+            raise ValueError(f"无效的要素名称: {element}")
+
+        # 构建查询
+        query = text(f"""
+            SELECT
+                station_id, lat, lon, year, month, day, hour, {db_column_name}, {db_column_name}_grid
+            FROM proc_sg_data
+            WHERE
+                year >= :start_year
+                AND year <= :end_year
+        """)
+        result = db.execute(
+            query,
+            {
+                "start_year": int(start_year),
+                "end_year": int(end_year)
+            }
+        )
+        df = pd.DataFrame(result.fetchall())
+        return df
+    
+    except Exception as e:
+        print(f"查询数据时出错: {e}")
+        db.rollback()
+        raise
