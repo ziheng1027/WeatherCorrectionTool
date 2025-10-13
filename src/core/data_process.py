@@ -9,9 +9,8 @@ from typing import Optional, Callable
 from functools import reduce
 from sqlalchemy.orm import Session
 from ..db import crud
-from ..utils import file_io
 from ..core.config import settings
-from ..core.data_mapping import cst_to_utc, ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING, NC_TO_DB_MAPPING
+from ..core.data_mapping import cst_to_utc, NC_TO_DB_MAPPING
 
 
 
