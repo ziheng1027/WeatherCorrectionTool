@@ -65,10 +65,10 @@ def cal_metrics(obs, pred, epsilon=1e-3):
     :return: CC, RMSE, MRE, MBE
     """
     metrics = {}
-    metrics['CC'] = round(CC(obs, pred), 4)
-    metrics['RMSE'] = round(RMSE(obs, pred), 4)
-    metrics['MAE'] = round(MAE(obs, pred), 4)
-    metrics['MRE'] = round(MRE(obs, pred, epsilon), 4)
-    metrics['MBE'] = round(MBE(obs, pred), 4)
-    metrics['R2'] = round(R2(obs, pred), 4)
+    metrics['CC'] = format(CC(obs, pred), ".4f")
+    metrics['RMSE'] = format(RMSE(obs, pred), ".4f")
+    metrics['MAE'] = format(MAE(obs, pred), ".4f")
+    metrics['MRE'] = format(MRE(obs, pred, epsilon), ".4f")
+    metrics['MBE'] = format(MBE(obs, pred), ".4f")
+    metrics['R2'] = format(R2(obs, pred), ".4f")
     return metrics

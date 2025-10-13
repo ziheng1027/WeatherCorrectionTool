@@ -1,10 +1,13 @@
 # src/core/model_train.py
 import os
+import joblib
 import numpy as np
 import pandas as pd
 import xarray as xr
+from time import time
 from sqlalchemy.orm import Session
 from ..db import crud
+from ..utils.metrics import cal_metrics
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
 from ..core.config import settings, load_model_config
 
@@ -80,29 +83,22 @@ def build_dataset_from_db(
 def split_dataset(dataset: pd.DataFrame, element: str, split_method: str, test_years: list[str], test_stations: list[str]):
     """划分数据[by_year, by_station], 返回train_X, train_y, test_X, test_y"""
     if split_method == "by_year":
-        train_dataset = dataset[~dataset["年"].isin(test_years)].iloc[:, 2:]  # 前两列是站号和站名
-        test_dataset = dataset[dataset["年"].isin(test_years)].iloc[:, 2:]
+        train_dataset = dataset[~dataset["年"].isin(test_years)]
+        test_dataset = dataset[dataset["年"].isin(test_years)]
     elif split_method == "by_station":
-        train_dataset = dataset[~dataset["station_name"].isin(test_stations)].iloc[:, 2:]
-        test_dataset = dataset[dataset["station_name"].isin(test_stations)].iloc[:, 2:]
+        train_dataset = dataset[~dataset["station_name"].isin(test_stations)]
+        test_dataset = dataset[dataset["station_name"].isin(test_stations)]
     else:
         raise ValueError(f"不支持的数据集划分方法: {split_method}")
-    
-    element_db_column = ELEMENT_TO_DB_MAPPING[element]
-    label_col = element_db_column
-    train_X = train_dataset.drop(columns=["season", label_col])
-    train_y = train_dataset[label_col]
-    test_X = test_dataset.drop(columns=["season", label_col])
-    test_y = test_dataset[label_col]
 
-    return train_X, train_y, test_X, test_y
+    return train_dataset, test_dataset
 
-def build_model(model_name: str, element: str, start_year: str, end_year: str, season: str):
+def build_model(model_name: str, element: str):
     """根据传入的模型名称构建模型实例"""
     # 加载模型配置文件
     model_name = model_name.lower()
     model_config_dir = settings.MODEL_CONFIG_DIR
-    model_config_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.json"
+    model_config_name = f"{model_name}_{element}.json"
     model_config_path = os.path.join(model_config_dir, model_name, model_config_name)
     model_config = load_model_config(model_config_path)
 
@@ -118,30 +114,170 @@ def build_model(model_name: str, element: str, start_year: str, end_year: str, s
 
     return model
 
-def train_model(model, train_X: pd.DataFrame, train_y: pd.Series):
+def train_model(
+        model_name: str, element: str, start_year: str, end_year: str, season: str, 
+        early_stopping_rounds: str, train_dataset: pd.DataFrame, test_dataset: pd.DataFrame
+    ):
     """训练模型"""
-    pass
+    # 划分特征和标签
+    label_col = ELEMENT_TO_DB_MAPPING[element]
+    train_X = train_dataset.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
+    train_y = train_dataset[label_col]
+    test_X = test_dataset.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
+    test_y = test_dataset[label_col]
 
-def evaluate_model(model, test_X: pd.DataFrame, test_y: pd.Series):
+    eval_set = [(train_X, train_y), (test_X, test_y)]
+    eval_name = ["validation_0", "validation_1"]
+    
+    start_time = time()
+    print(f"开始训练模型: [{model_name}, {element}, {start_year}-{end_year}, {season}]")
+    model = build_model(model_name, element)
+    if model_name == "xgboost":
+        model.set_params(
+            early_stopping_rounds=int(early_stopping_rounds)
+        )
+        model.fit(
+            train_X, train_y, eval_set=eval_set, verbose=10
+        )
+        results = model.evals_result()
+    elif model_name == "lightgbm":
+        import lightgbm as lgb
+        model.fit(
+            train_X, train_y, eval_set=eval_set, eval_names=eval_name, 
+            callbacks=[
+                lgb.log_evaluation(period=10),
+                lgb.early_stopping(int(early_stopping_rounds))
+            ]
+        )
+        results = model.evals_result_
+    
+    # 获取训练和验证损失
+    train_losses = results["validation_0"]["rmse"]
+    test_losses = results["validation_1"]["rmse"]
+    end_time = time()
+    print(f"[{model_name}, {element}] 训练完成, 耗时: {end_time - start_time:.2f}秒")
+
+    # 保存模型
+    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
+    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+    joblib.dump(model, checkpoint_path)
+    print(f"模型已保存到: {checkpoint_path}")
+
+    return train_losses, test_losses
+ 
+def evaluate_model(
+        model_name: str, test_dataset: pd.DataFrame,element: str, 
+        start_year: str, end_year: str, season: str
+    ):
     """评估模型"""
-    pass
+    # 加载模型
+    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
+    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
+    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+    model = joblib.load(checkpoint_path)
+
+    # 划分特征和标签
+    label_col = ELEMENT_TO_DB_MAPPING[element]
+    test_X = test_dataset.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
+    test_y = test_dataset[label_col]
+
+    # 模型预测指标
+    pred_y = model.predict(test_X)
+    metrics_test_pred = cal_metrics(test_y, pred_y)
+    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 模型评估指标[指定测试集的均值]:")
+    print(metrics_test_pred, " \n")
+
+    # 原始数据指标
+    element_db_column = ELEMENT_TO_DB_MAPPING[element]
+    test_grid = test_X[f"{element_db_column}_grid"]
+    mrtrics_test_true = cal_metrics(test_y, test_grid)
+    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 原始数据指标[指定测试集的均值]:")
+    print(mrtrics_test_true, " \n")
+
+    # 特征重要性
+    feature_importance_dict = get_feature_importance(model, test_X)
+    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 特征重要性:")
+    print(feature_importance_dict, " \n")
+
+    # 存放原始数据和模型预测指标
+    metrics_list = []
+    # 按照站点分组
+    station_dataset = test_dataset.groupby(["station_name"])
+    # 计算每个站点的指标(基于当前测试集的起止年份+季节范围内,每个站点所有数据的均值)
+    for station_name, station_data in station_dataset:
+        # 划分特征和标签
+        station_test_X = station_data.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
+        station_test_y = station_data[label_col]
+        station_test_grid = station_test_X[f"{element_db_column}_grid"]
+        station_pred_y = model.predict(station_test_X)
+        # 计算指标
+        metrics_station_pred = cal_metrics(station_test_y, station_pred_y)
+        metrics_station_true = cal_metrics(station_test_y, station_test_grid)
+
+        row_data = {"station_name": station_name}
+        for metric in metrics_station_pred:
+            row_data[f"原{metric}"] = metrics_station_true[metric]
+            row_data[f"新{metric}"] = metrics_station_pred[metric]
+        
+        # 添加到metrics_list
+        metrics_list.append(row_data)
+    
+    metrics_df = pd.DataFrame(metrics_list)
+    
+    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 评估指标[指定测试集的均值]:")
+    print(metrics_df)
+
+    result = {
+        "metrics_pred_in_testset": metrics_test_pred,
+        "metrics_true_in_testset": mrtrics_test_true,
+        "feature_importance": feature_importance_dict,
+        "station_metrics": metrics_df
+    }
+
+    return result      
 
 def get_feature_importance(model, test_X: pd.DataFrame):
     """获取特征重要性"""
-    pass
+    try:
+        if hasattr(model, "feature_importances_"):
+            importance = model.feature_importances_
+            feature_names = test_X.columns.to_list()
 
-def save_model(model, model_dir: str):
-    """保存模型"""
-    pass
-
-def load_model(model_dir: str):
-    """加载模型"""
-    pass
+            feature_importance_dict = {}
+            for i, (feature, importance_score) in enumerate(zip(feature_names, importance)):
+                feature_importance_dict[feature] = format(importance_score, ".4f")
+            
+            # 降序排列
+            feature_importance_dict = dict(
+                sorted(
+                    feature_importance_dict.items(), 
+                    key=lambda item: item[1], reverse=True
+                )
+            )
+            return feature_importance_dict
+        
+    except Exception as e:
+        print(f"获取特征重要性失败: {e}")
+        return {}
 
 
 if __name__ == "__main__":
     from ..db.database import SessionLocal
     db = SessionLocal()
-    dataset = build_dataset_from_db(db, settings.DEM_DATA_PATH, settings.LAGS_CONFIG, "温度", "2020", "2021", "全年")
-    train_X, train_y, test_X, test_y = split_dataset(dataset, "温度", "by_station", [], ["老河口", "十堰", "武穴"])
-    
+    model_name = "lightgbm"
+    element = "2分钟平均风速"
+    start_year = "2020"
+    end_year = "2020"
+    season = "全年"
+    split_method = "by_station"
+    test_stations = ["老河口", "武穴", "竹山", "神农架", "阳新"]
+
+
+    dataset = build_dataset_from_db(db, settings.DEM_DATA_PATH, settings.LAGS_CONFIG, element, start_year, end_year, season)
+    train_dataset, test_dataset = split_dataset(dataset, element, split_method, [], test_stations)
+    # train_losses, test_losses = train_model(
+    #     model_name, element, start_year, end_year, season, settings.EARLY_STOPING_ROUNDS, train_dataset, test_dataset
+    # )
+    evaluate_model(model_name, test_dataset, element, start_year, end_year, season)

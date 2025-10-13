@@ -79,7 +79,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
 
         if not cleaned_chunks:
             print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 站点数据")
-            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"在 {year} 年未找到有效的 {element} 站点数据")
+            update_task_status(db, subtask_id, "FAILED", 100.0, f"在 {year} 年未找到有效的 {element} 站点数据")
             print(f"|-- [Worker PID:{mp.current_process().pid}] 警告: 在 {year} 年未找到有效的 {element} 站点数据")
             return
         
@@ -100,7 +100,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         start_time = time()
         grid_files = get_grid_files(settings.GRID_DATA_DIR, ELEMENT_TO_NC_MAPPING.get(element), year)
         if not grid_files:
-            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"在 {year} 年未找到有效的 {element} 格点数据")
+            update_task_status(db, subtask_id, "FAILED", 100.0, f"在 {year} 年未找到有效的 {element} 格点数据")
             print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 格点数据文件")
             return
         print(f"|--->({element}, {year}) 读取 {len(grid_files)} 个格点文件, 准备提取格点值...")

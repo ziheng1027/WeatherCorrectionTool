@@ -151,7 +151,7 @@ def get_global_task_by_status(db: Session, task_type: str, status: str) -> list[
     tasks = db.query(db_models.TaskProgress).filter(
         db_models.TaskProgress.task_type == task_type,
         db_models.TaskProgress.status == status
-    ).all()
+    ).order_by(db_models.TaskProgress.end_time.desc()).all()
     params_list = []
     for task in tasks:
         params_dict = task.get_params()

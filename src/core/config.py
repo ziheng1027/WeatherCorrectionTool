@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     AVAILABLE_ELEMENTS: list[str] = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]
     CST_YEARS: List[int] = config.get("cst_years", [])
     LAGS_CONFIG: Dict[str, Any] = config.get("lags_config", {})
+    EARLY_STOPING_ROUNDS: str = config.get("early_stopping_rounds", "100")
 
 
 settings = Settings()

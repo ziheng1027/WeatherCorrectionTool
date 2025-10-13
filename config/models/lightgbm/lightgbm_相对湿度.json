@@ -1,0 +1,11 @@
+{
+    "objective": "regression",
+    "boosting_type": "gbdt",
+    "learning_rate": 0.01,
+    "n_estimators": 1600,
+    "num_leaves": 64,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "metric": "rmse"
+}
