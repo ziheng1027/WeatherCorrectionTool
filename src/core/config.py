@@ -3,8 +3,7 @@ import json
 import threading
 from typing import Dict, List, Any
 from pathlib import Path
-from pydantic import BaseModel, DirectoryPath, FilePath
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 
 
 # 全局的停止事件
@@ -29,15 +28,15 @@ def save_config_json(config_data: dict):
 class Settings(BaseSettings):
     """配置文件读取类"""
     config: Dict[str, Any] = load_config_json()
-    STATION_DATA_DIR: DirectoryPath = DirectoryPath(config.get("station_data_dir", ""))
-    GRID_DATA_DIR: DirectoryPath = DirectoryPath(config.get("grid_data_dir", ""))
+    STATION_DATA_DIR: str = str(config.get("station_data_dir", ""))
+    GRID_DATA_DIR: str = str(config.get("grid_data_dir", ""))
     
-    STATION_INFO_PATH: FilePath = FilePath(config.get("station_info_path", ""))
-    DEM_DATA_PATH: FilePath = FilePath(config.get("dem_data_path", ""))
+    STATION_INFO_PATH: str = str(config.get("station_info_path", ""))
+    DEM_DATA_PATH: str = str(config.get("dem_data_path", ""))
 
-    MODEL_CONFIG_DIR: DirectoryPath = DirectoryPath(config.get("model_config_dir", ""))
-    MODEL_OUTPUT_DIR: Path = Path(config.get("model_output_dir", ""))
-    CORRECTION_OUTPUT_DIR: Path = Path(config.get("correction_output_dir", ""))
+    MODEL_CONFIG_DIR: str = str(config.get("model_config_dir", ""))
+    MODEL_OUTPUT_DIR: str = str(config.get("model_output_dir", ""))
+    CORRECTION_OUTPUT_DIR: str = str(config.get("correction_output_dir", ""))
 
     AVAILABLE_ELEMENTS: list[str] = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]
     CST_YEARS: List[int] = config.get("cst_years", [])
