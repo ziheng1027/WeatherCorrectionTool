@@ -65,6 +65,8 @@ def build_dataset_from_db(
         for lag in lags:
             station_df[f"{element_db_column}_grid_lag_{lag}"] = station_df[f"{element_db_column}_grid"].shift(lag)
         station_df.dropna(inplace=True)
+        if station_df.empty:
+            continue
         # 添加地形特征
         lat, lon = station_df.iloc[0]['lat'], station_df.iloc[0]['lon']
         elevation, slope, aspect = get_terrain_feature(dem_ds, lat, lon)
@@ -79,8 +81,8 @@ def build_dataset_from_db(
     print(f"构建完成的数据集形状: {dataset.shape}")
 
     return dataset
-    
-def split_dataset(dataset: pd.DataFrame, element: str, split_method: str, test_years: list[str], test_stations: list[str]):
+
+def split_dataset(dataset: pd.DataFrame, split_method: str, test_years: list[str], test_stations: list[str]):
     """划分数据[by_year, by_station], 返回train_X, train_y, test_X, test_y"""
     if split_method == "by_year":
         train_dataset = dataset[~dataset["年"].isin(test_years)]
@@ -118,7 +120,7 @@ def train_model(
         model_name: str, element: str, start_year: str, end_year: str, season: str, 
         early_stopping_rounds: str, train_dataset: pd.DataFrame, test_dataset: pd.DataFrame
     ):
-    """训练模型"""
+    """训练模型并返回训练和验证损失"""
     # 划分特征和标签
     label_col = ELEMENT_TO_DB_MAPPING[element]
     train_X = train_dataset.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
@@ -210,8 +212,12 @@ def evaluate_model(
         # 划分特征和标签
         station_test_X = station_data.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
         station_test_y = station_data[label_col]
+
+        if station_test_X.empty: continue
+            
         station_test_grid = station_test_X[f"{element_db_column}_grid"]
         station_pred_y = model.predict(station_test_X)
+        
         # 计算指标
         metrics_station_pred = cal_metrics(station_test_y, station_pred_y)
         metrics_station_true = cal_metrics(station_test_y, station_test_grid)
@@ -236,7 +242,7 @@ def evaluate_model(
         "station_metrics": metrics_df
     }
 
-    return result      
+    return result
 
 def get_feature_importance(model, test_X: pd.DataFrame):
     """获取特征重要性"""
@@ -276,7 +282,7 @@ if __name__ == "__main__":
 
 
     dataset = build_dataset_from_db(db, settings.DEM_DATA_PATH, settings.LAGS_CONFIG, element, start_year, end_year, season)
-    train_dataset, test_dataset = split_dataset(dataset, element, split_method, [], test_stations)
+    train_dataset, test_dataset = split_dataset(dataset, split_method, [], test_stations)
     # train_losses, test_losses = train_model(
     #     model_name, element, start_year, end_year, season, settings.EARLY_STOPING_ROUNDS, train_dataset, test_dataset
     # )
