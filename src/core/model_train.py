@@ -8,6 +8,7 @@ from time import time
 from sqlalchemy.orm import Session
 from ..db import crud
 from ..utils.metrics import cal_metrics
+from ..utils.file_io import load_model
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
 from ..core.config import settings, get_model_config_path, load_model_config
 
@@ -170,40 +171,7 @@ def train_model(
     end_time = time()
     print(f"[{model_name}, {element}] 训练完成, 耗时: {end_time - start_time:.2f}秒\n")
 
-    # 保存训练/验证损失
-    losses_df = pd.DataFrame(
-        {
-            "epoch": range(1, len(train_losses) + 1),
-            "train_losses": train_losses,
-            "test_losses": test_losses
-        }
-    )
-    losses_dir = os.path.join(settings.LOSSES_OUTPUT_DIR, model_name)
-    os.makedirs(losses_dir, exist_ok=True)
-    losses_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_losses.csv"
-    losses_path = os.path.join(losses_dir, losses_file_name)
-    losses_df.to_csv(losses_path, index=False)
-    print(f"训练损失已保存到: {losses_path}")
-
-    # 保存测试集的总体评估指标(均值)
-    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
-    os.makedirs(metrics_dir, exist_ok=True)
-    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-all.json"
-    metrics_path = os.path.join(metrics_dir, metrics_file_name)
-    with open(metrics_path, "w") as f:
-        json.dump({
-            "test_true": metrics_test_true,
-            "test_pred": metrics_test_pred
-        }, f, indent=4)
-    print(f"测试集总体评估指标已保存到: {metrics_path}\n")
-
-    # 保存模型
-    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_name = f"{model_name.lower()}_{element}_{start_year}_{end_year}_{season}.ckpt"
-    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
-    joblib.dump(model, checkpoint_path)
-    print(f"模型已保存到: {checkpoint_path}\n")
+    return model, train_losses, test_losses, metrics_test_true, metrics_test_pred
 
 def evaluate_model(
         model_name: str, test_dataset: pd.DataFrame,element: str, 
@@ -211,10 +179,7 @@ def evaluate_model(
     ):
     """评估模型"""
     # 加载模型
-    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
-    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
-    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
-    model = joblib.load(checkpoint_path)
+    model = load_model(model_name, element, start_year, end_year, season)
 
     # 划分特征
     label_col = ELEMENT_TO_DB_MAPPING[element]
@@ -224,15 +189,6 @@ def evaluate_model(
     feature_importance_dict = get_feature_importance(model, test_X)
     print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 特征重要性:")
     print(feature_importance_dict, " \n")
-
-    # 保存特征重要性
-    feature_importance_dir = os.path.join(settings.FEATURE_IMPORTANCE_OUTPUT_DIR, model_name)
-    os.makedirs(feature_importance_dir, exist_ok=True)
-    feature_importance_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_feature-importance.json"
-    feature_importance_path = os.path.join(feature_importance_dir, feature_importance_file_name)
-    with open(feature_importance_path, "w") as f:
-        json.dump(feature_importance_dict, f, indent=4)
-    print(f"特征重要性已保存到: {feature_importance_path}\n")
 
     element_db_column = ELEMENT_TO_DB_MAPPING[element]
     # 存放原始站点数据, 原始格点数据以及模型预测数据
@@ -274,27 +230,13 @@ def evaluate_model(
         
         # 添加到metrics_list
         metrics_list.append(row_data)
-    
-    # 保存原始站点数据, 原始格点数据以及模型预测数据
-    results_df = pd.concat(results, axis=0, ignore_index=True)
-    results_dir = os.path.join(settings.PRED_TRUE_OUTPUT_DIR, model_name)
-    os.makedirs(results_dir, exist_ok=True)
-    results_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_station-grid-pred.csv"
-    results_path = os.path.join(results_dir, results_file_name)
-    results_df.to_csv(results_path, index=False)
-    print(f"原始站点数据, 原始格点数据以及模型预测数据已保存到: {results_path}\n")
 
+    results_df = pd.concat(results, axis=0, ignore_index=True)
     metrics_df = pd.DataFrame(metrics_list)
     print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 评估指标[指定测试集的均值]:")
     print(metrics_df)
 
-    # 保存每个站点的评估指标(原始指标+模型指标)
-    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
-    os.makedirs(metrics_dir, exist_ok=True)
-    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-station.csv"
-    metrics_path = os.path.join(metrics_dir, metrics_file_name)
-    metrics_df.to_csv(metrics_path, index=False)
-    print(f"评估指标已保存到: {metrics_path}\n")
+    return results_df, metrics_df, feature_importance_dict
 
 def get_feature_importance(model, test_X: pd.DataFrame):
     """获取特征重要性"""

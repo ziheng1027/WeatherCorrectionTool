@@ -1,7 +1,10 @@
 # src/utils/file_io.py
 import os
 import glob
+import json
+import joblib
 import xarray as xr
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from pathlib import Path
@@ -112,3 +115,100 @@ def safe_open_mfdataset(grid_files, **kwargs):
                     raise ValueError(f"无法处理坐标非单调问题: {e}")
         else:
             raise
+
+def save_model(
+        model: object, model_name: str, element: str, 
+        start_year: str, end_year: str, season: str
+    ):
+    """保存模型"""
+    model_name = model_name.lower()
+    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
+    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+    joblib.dump(model, checkpoint_path)
+    print(f"模型已保存到: {checkpoint_path}\n")
+
+def load_model(model_name: str, element: str, start_year: str, end_year: str, season: str):
+    """加载模型"""
+    model_name = model_name.lower()
+    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
+    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
+    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+    model = joblib.load(checkpoint_path)
+    return model
+
+def save_losses(
+        train_losses: list, test_losses: list, model_name: str, element: str,
+        start_year: str, end_year: str, season: str
+    ):
+    """保存训练和测试损失"""
+    model_name = model_name.lower()
+    losses_df = pd.DataFrame({
+        "epoch": range(1, len(train_losses) + 1),
+        "train_loss": train_losses,
+        "test_loss": test_losses
+    })
+    losses_dir = os.path.join(settings.LOSSES_OUTPUT_DIR, model_name)
+    os.makedirs(losses_dir, exist_ok=True)
+    losses_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_losses.csv"
+    losses_path = os.path.join(losses_dir, losses_file_name)
+    losses_df.to_csv(losses_path, index=False)
+    print(f"训练损失已保存到: {losses_path}\n")
+
+def save_metrics_in_testset_all(
+        metrics_true: dict, metrics_pred: dict, model_name: str, element: str,
+        start_year: str, end_year: str, season: str
+    ):
+    """保存测试集的整体指标(所有站点均值)"""
+    model_name = model_name.lower()
+    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
+    os.makedirs(metrics_dir, exist_ok=True)
+    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-all.json"
+    metrics_path = os.path.join(metrics_dir, metrics_file_name)
+    with open(metrics_path, 'w') as f:
+        json.dump({
+            "testset_true": metrics_true,
+            "testset_pred": metrics_pred
+        }, f, indent=4)
+    print(f"测试集整体指标已保存到: {metrics_path}\n")
+
+def save_metrics_in_testset_station(
+        metrics_df: pd.DataFrame, model_name: str, element: str,
+        start_year: str, end_year: str, season: str
+    ):
+    """保存测试集的站点指标(每个站点的均值)"""
+    model_name = model_name.lower()
+    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
+    os.makedirs(metrics_dir, exist_ok=True)
+    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-station.csv"
+    metrics_path = os.path.join(metrics_dir, metrics_file_name)
+    metrics_df.to_csv(metrics_path, index=False)
+    print(f"测试集站点指标已保存到: {metrics_path}\n")
+
+def save_feature_importance(
+        feature_importance: dict, model_name: str, element: str,
+        start_year: str, end_year: str, season: str
+    ):
+    """保存特征重要性"""
+    model_name = model_name.lower()
+    importance_dir = os.path.join(settings.FEATURE_IMPORTANCE_OUTPUT_DIR, model_name)
+    os.makedirs(importance_dir, exist_ok=True)
+    importance_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_feature-importance.json"
+    importance_path = os.path.join(importance_dir, importance_file_name)
+    with open(importance_path, 'w') as f:
+        json.dump(feature_importance, f, indent=4)
+    print(f"特征重要性已保存到: {importance_path}\n")
+
+def save_true_pred(
+        result_df: pd.DataFrame, model_name: str, element: str,
+        start_year: str, end_year: str, season: str
+    ):
+    """保存站点数据、格点数据、预测数据"""
+    model_name = model_name.lower()
+    result_dir = os.path.join(settings.PRED_TRUE_OUTPUT_DIR, model_name)
+    os.makedirs(result_dir, exist_ok=True)
+    result_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_station-grid-pred.csv"
+    result_path = os.path.join(result_dir, result_file_name)
+    result_df.to_csv(result_path, index=False)
+    print(f"站点数据、格点数据、预测数据已保存到: {result_path}\n")
