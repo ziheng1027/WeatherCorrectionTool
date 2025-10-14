@@ -1,11 +1,16 @@
 # src/api/routers/model_train.py
 import uuid
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+import json
+import pandas as pd
+from pathlib import Path
 from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+
 from ...db import crud
 from ...db.database import get_db
+from ...core import schemas
+from ...core.config import settings
 from ...core.config import get_model_config_path, load_model_config, save_model_config
-from ...core.schemas import MessageResponse, ModelParamsUpdateRequest, ModelTrainRequest, TaskCreationResponse
 from ...tasks import model_train
 
 
@@ -28,10 +33,10 @@ def get_model_config(model_name: str, element: str):
         raise HTTPException(status_code=500, detail=f"读取配置文件时发生未知错误: {str(e)}")
 
 
-@router.post("/model-config/{model_name}/{element}", response_model=MessageResponse,
+@router.post("/model-config/{model_name}/{element}", response_model=schemas.MessageResponse,
              summary="更新指定模型的超参数配置, 只会更新请求体中提供的、且在原始配置中已存在的参数")
 def update_model_config(
-    model_name: str, element: str, request: ModelParamsUpdateRequest
+    model_name: str, element: str, request: schemas.ModelParamsUpdateRequest
 ):
     """
     更新指定模型和要素的超参数配置。
@@ -58,7 +63,7 @@ def update_model_config(
         # 3. 保存更新后的配置
         save_model_config(model_config_path, current_config)
         
-        return MessageResponse(message=f"模型参数更新成功, 已更新: {', '.join(updated_keys)}")
+        return schemas.MessageResponse(message=f"模型参数更新成功, 已更新: {', '.join(updated_keys)}")
 
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -68,15 +73,15 @@ def update_model_config(
         raise HTTPException(status_code=500, detail=f"更新配置文件时发生未知错误: {e}")
 
 
-@router.post("/start", response_model=TaskCreationResponse, summary="启动模型训练任务")
+@router.post("/start", response_model=schemas.TaskCreationResponse, summary="启动模型训练任务")
 def start_model_train(
-    request: ModelTrainRequest, backgroud_tasks: BackgroundTasks, db: Session = Depends(get_db)
+    request: schemas.ModelTrainRequest, backgroud_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     """启动一个后台模型训练任务"""
     # 检查是否有同类型的任务正在运行
     processing_task_id = crud.is_task_type_processing(db, "ModelTrain")
     if processing_task_id:
-        return TaskCreationResponse(
+        return schemas.TaskCreationResponse(
             message="已有模型训练任务正在进行中, 请等待其完成后再试",
             task_id=processing_task_id
         )
@@ -94,7 +99,48 @@ def start_model_train(
     # 启动后台任务
     backgroud_tasks.add_task(model_train.train, task_id, request)
 
-    return TaskCreationResponse(
+    return schemas.TaskCreationResponse(
         message="模型训练任务已启动",
         task_id=task_id
     )
+
+
+@router.post("/get-losses", response_model=schemas.LossesResponse, summary="获取训练损失/验证损失")
+async def get_training_losses(request: schemas.ModelInfoRequest):
+    """根据模型信息获取训练/验证损失, 用于绘制损失曲线"""
+    model_name = request.model.lower()
+    losses_dir = Path(settings.LOSSES_OUTPUT_DIR) / model_name
+    losses_file_name = f"{model_name}_{request.element}_{request.start_year}_{request.end_year}_{request.season}_losses.csv"
+    losses_file_path = losses_dir / losses_file_name
+
+    if not losses_file_path.exists():
+        raise HTTPException(status_code=404, detail=f"未找到损失文件: {losses_file_path}")
+    
+    try:
+        df = pd.read_csv(losses_file_path)
+        return {
+            "epochs": df["epoch"].tolist(),
+            "train_losses": df["train_loss"].tolist(),
+            "test_losses": df["test_loss"].tolist()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取损失文件时发生错误: {str(e)}")
+
+
+@router.post("get-metrics-testset-all", response_model=schemas.MetricsResponse, summary="获取测试集所有站点的整体评估指标")
+async def get_overall_metrics(request: schemas.ModelInfoRequest):
+    """根据模型信息获取测试集所有站点的整体评估指标"""
+    model_name = request.model.lower()
+    metrics_dir = Path(settings.METRIC_OUTPUT_DIR) / model_name
+    metrics_file_name = f"{model_name}_{request.element}_{request.start_year}_{request.end_year}_{request.season}_testset-all.json"
+    metrics_file_path = metrics_dir / metrics_file_name
+
+    if not metrics_file_path.exists():
+        raise HTTPException(status_code=404, detail=f"未找到指标文件: {metrics_file_path}")
+
+    try:
+        with open(metrics_file_path, "r", encoding="utf-8") as f:
+            metrics = json.load(f)
+        return metrics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取指标文件时发生错误: {str(e)}")

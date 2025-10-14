@@ -62,10 +62,17 @@ def cancel_subtask(db: Session, parent_task_id: str):
     if not tasks_to_cancel:
         return
 
+    # 更新所有匹配的子任务
     for task in tasks_to_cancel:
-        task.status = "CANCELED"
+        task.status = "FAILED"
         task.progress_text = "任务被用户取消"
         task.end_time = datetime.now()
+    # 更新父任务状态
+    parent_task = get_task_by_id(db, parent_task_id)
+    if parent_task:
+        parent_task.status = "FAILED"
+        parent_task.progress_text = "任务被用户取消"
+        parent_task.end_time = datetime.now()
     db.commit()
     return len(tasks_to_cancel)
 
@@ -139,8 +146,9 @@ def get_global_filenames_by_status(db: Session, task_type: str, status: str) -> 
         # 获取处理中的文件进度
         if status == "PROCESSING":
             progress = task.cur_progress
+            progress_text = task.progress_text
     
-    return file_names, progress
+    return file_names, progress, progress_text
 
 def get_global_task_by_status(db: Session, task_type: str, status: str) -> list[str]:
     """
@@ -157,7 +165,9 @@ def get_global_task_by_status(db: Session, task_type: str, status: str) -> list[
         params_dict = task.get_params()
         if status == "PROCESSING":
             progress = task.cur_progress
+            progress_text = task.progress_text
             params_dict["progress"] = progress
+            params_dict["progress_text"] = progress_text
         if params_dict:
             params_list.append(params_dict)
 

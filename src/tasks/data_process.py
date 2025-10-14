@@ -175,26 +175,25 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
         num_workers = min(num_workers, cpu_count - 1) if cpu_count > 1 else 1
         print(f"|--> 主进程: 检测到 CPU 核心数: {cpu_count}, 将使用 {num_workers} 个工作进程")
         pool = mp_context.Pool(processes=num_workers)
-        # 准备传递给每个worker的参数
-        worker_args = [(info["sub_task_id"], info["element"], info["year"]) for info in sub_tasks_info]
-        # 使用starmap_async 异步执行, 这样主进程可以继续监控进度
-        pool.starmap_async(process_yearly_element, worker_args)
-        # 关闭进程池
-        pool.close()
+
+        try:
+            # 准备传递给每个worker的参数
+            worker_args = [(info["sub_task_id"], info["element"], info["year"]) for info in sub_tasks_info]
+            # 使用starmap_async 异步执行, 这样主进程可以继续监控进度
+            pool.starmap_async(process_yearly_element, worker_args)
         
-        # 3. 监控任务进度并更新父任务状态
-        completed_count = 0
-        while completed_count < total_tasks:
-            # 检查停止信号
-            if STOP_EVENT.is_set():
-                print(f"|--> 主进程: 检测到关闭信号, 正在终止任务 {task_id}...")
-                pool.terminate()  # 立即终止所有工作进程
-                pool.join()  # 确保所有进程都已结束
-                update_task_status(db, task_id, "FAILED", (completed_count / total_tasks) * 80, "任务被用户取消")
-                canceled_count = cancel_subtask(db, task_id)
-                print(f"|--> 主进程: 任务 {task_id} 已取消, 取消了 {canceled_count} 个子任务")
-                
-                break
+            # 3. 监控任务进度并更新父任务状态
+            completed_count = 0
+            while completed_count < total_tasks:
+                # 检查停止信号
+                if STOP_EVENT.is_set():
+                    print(f"|--> 主进程: 检测到关闭信号, 正在终止任务 {task_id}...")
+                    pool.terminate()  # 立即终止所有工作进程
+                    pool.join()  # 确保所有进程都已结束
+                    update_task_status(db, task_id, "FAILED", (completed_count / total_tasks) * 80, "任务被用户取消")
+                    canceled_count = cancel_subtask(db, task_id)
+                    print(f"|--> 主进程: 任务 {task_id} 已取消, 取消了 {canceled_count} 个子任务")
+                    return
             
             # 从数据库查询子任务状态来计算进度
             sub_tasks_from_db = get_subtasks_by_parent_id(db, task_id)
@@ -202,7 +201,14 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
             overall_progress = (completed_count / total_tasks) * 80
             update_task_status(db, task_id, "PROCESSING", overall_progress, f"已完成 {completed_count}/{total_tasks + 1} 个子任务")
             sleep(15)  # 每15秒检查一次进度
-        pool.join()  # 确保所有进程都已结束
+        
+        finally:
+            pool.close()
+            pool.join()  # 确保所有进程都已结束
+        
+        if STOP_EVENT.is_set():
+            print(f"|--> 主进程: 任务 {task_id} 已被取消, 跳过数据导入步骤")
+            return
 
         # 4. 将所有处理完成的临时文件导入数据库
         import_subtask_id = str(uuid.uuid4())
@@ -244,17 +250,17 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
 
 
 
-# if __name__ == "__main__":
-#     db = SessionLocal()
-#     elements = ["温度", "2分钟平均风速"]
-#     # process_elements(db, ["温度", "2分钟平均风速"], "2020", "2020")
-#     test_task_id = str(uuid.uuid4())
-#     create_task(
-#         db, task_id=test_task_id, task_name="测试多进程数据处理任务",
-#         task_type="DataProcess", 
-#         params={"elements": elements, "start_year": "2020", "end_year": "2020"},
-#         parent_task_id=None 
-#     )
-#     db.close()
+if __name__ == "__main__":
+    db = SessionLocal()
+    elements = ["温度", "2分钟平均风速"]
+    # process_elements(db, ["温度", "2分钟平均风速"], "2020", "2020")
+    test_task_id = str(uuid.uuid4())
+    create_task(
+        db, task_id=test_task_id, task_name="测试多进程数据处理任务",
+        task_type="DataProcess", 
+        params={"elements": elements, "start_year": "2020", "end_year": "2020"},
+        parent_task_id=None 
+    )
+    db.close()
 
-#     process_mp(test_task_id, elements, "2020", "2020", num_workers=4)
+    process_mp(test_task_id, elements, "2020", "2020", num_workers=4)

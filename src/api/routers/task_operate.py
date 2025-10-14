@@ -42,7 +42,8 @@ def get_task_status(task_id: str, db: Session = Depends(get_db)):
         task_name=task.task_name,
         task_type=task.task_type,
         status=task.status,
-        progress=task.cur_progress
+        progress=task.cur_progress,
+        progress_text=task.progress_text
     )
 
 
@@ -61,7 +62,8 @@ def get_task_details(task_id: str, db: Session = Depends(get_db)):
         task_name=parent_task.task_name,
         task_type=parent_task.task_type,
         status=parent_task.status,
-        progress=parent_task.cur_progress
+        progress=parent_task.cur_progress,
+        pregress_text=parent_task.progress_text
     )
     sub_tasks_status = [
         schemas.SubTaskStatusResponse(

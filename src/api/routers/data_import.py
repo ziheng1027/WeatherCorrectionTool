@@ -3,10 +3,7 @@ import uuid
 from threading import Thread, Lock
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ...core.schemas import (
-    TaskCreationResponse, TaskStatusResponse, SubTaskStatusResponse, TaskDetailsResponse,
-    MessageResponse, FileListResponse
-)
+from ...core.schemas import TaskCreationResponse, MessageResponse, FileListResponse
 from ...db import crud
 from ...core.config import STOP_EVENT
 from ...db.database import get_db

@@ -1,5 +1,5 @@
 # src/main.py
-
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -13,14 +13,19 @@ from src.core.config import STOP_EVENT
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 在应用启动时创建数据库和表
-    print("应用启动...")
-    from src.db.database import create_db_and_tables
-    create_db_and_tables()
-    yield
-    print("应用关闭...发送停止信号给后台任务...")
-    STOP_EVENT.set()
-    print("应用已关闭...")
+    try:
+        # 在应用启动时创建数据库和表
+        print("应用启动...")
+        from src.db.database import create_db_and_tables
+        create_db_and_tables()
+        yield
+    except asyncio.CancelledError:
+        print("收到取消信号, 正在关闭...")
+    finally:
+        # 在应用关闭时清理资源
+        print("应用关闭...发送停止信号给后台任务...")
+        STOP_EVENT.set()
+        print("应用已关闭...")
 
 # 创建FastAPI应用实例
 app = FastAPI(

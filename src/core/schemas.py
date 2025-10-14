@@ -126,7 +126,7 @@ class GridTimeSeriesResponse(BaseModel):
 
 class DataProcessingRequest(BaseModel):
     """用于接受数据处理请求的请求体模型"""
-    elements: List[str] = Field(default="温度", description="要处理的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
+    elements: List[str] = Field(default=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"], description="要处理的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
     start_year: str = Field(default="2008", description="起始年份", example="2008")
     end_year: str = Field(default="2023", description="结束年份", example="2023")
     num_workers: int = Field(default=48, description="工作进程数", example=48)
@@ -156,4 +156,35 @@ class ModelTrainRequest(BaseModel):
     test_set_values: list[str]  # 年份列表或站点列表
     model: Literal["XGBoost", "LightGBM"] = Field(default="XGBoost", description="模型名称", example="XGBoost")
     early_stopping_rounds: str = Field(default="100", description="早停轮数, 模型训练过程中如果连续多少轮的验证集表现没有提升, 则停止训练", example="100")
-    
+
+
+class ModelInfoRequest(BaseModel):
+    """用于接受模型信息请求的请求体模型, 以便查询结果"""
+    model: Literal["XGBoost", "LightGBM"] = Field(..., description="模型名称")
+    element: AVAILABLE_ELEMENTS
+    start_year: str = Field(..., description="数据集的起始年份")
+    end_year: str = Field(..., description="数据集的结束年份")
+    season: str = Field(..., description="构建哪个季节的数据集?")
+
+
+class LossesResponse(BaseModel):
+    """用于返回模型训练损失的响应模型"""
+    epochs: List[int]
+    train_losses: List[float]
+    test_losses: List[float]
+
+
+class MetricsDetail(BaseModel):
+    """用于返回模型评估指标的详细信息的响应模型"""
+    CC: float
+    RMSE: float
+    MAE: float
+    MRE: float
+    MBE: float
+    R2: float
+
+
+class MetricsResponse(BaseModel):
+    """用于返回模型整体评估指标的响应模型"""
+    testset_true: MetricsDetail
+    testset_pred: MetricsDetail

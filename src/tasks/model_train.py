@@ -70,7 +70,7 @@ def train(task_id: str, request: ModelTrainRequest):
         save_metrics_in_testset_station(metrics, request.model, request.element, request.start_year, request.end_year, request.season)
         save_feature_importance(feature_importance, request.model, request.element, request.start_year, request.end_year, request.season)
         print(f"|--> [Task ID: {task_id}] 预测结果、每个站点指标、特征重要性保存完成, 总耗时: {time() - start_time:.2f}秒")
-        crud.update_task_status(db, task_id, "COMPLETED", 100.0, "预测结果、每个站点指标、特征重要性保存已完成")
+        crud.update_task_status(db, task_id, "COMPLETED", 100.0, "评估结果已保存, 任务完成!")
     
     except Exception as e:
         error_message = f"任务失败: {str(e)}"
