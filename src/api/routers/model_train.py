@@ -1,3 +1,4 @@
+# src/api/routers/model_train.py
 import uuid
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
@@ -62,7 +63,7 @@ def update_model_config(
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except HTTPException as e:
-        raise e # 重新抛出已知的HTTP异常
+        raise e 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新配置文件时发生未知错误: {e}")
 

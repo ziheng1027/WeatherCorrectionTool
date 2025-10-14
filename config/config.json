@@ -7,8 +7,9 @@
     "model_output_dir": "output/models",
     "correction_output_dir": "output/correction",
     "losses_output_dir": "output/losses",
-    "metric_output_dir": "output/metric",
+    "metric_output_dir": "output/metrics",
     "pred_true_output_dir": "output/pred_true",
+    "feature_importance_output_dir": "output/feature_importance",
     "early_stoping_rounds": "100",
     "cst_years": [
         2022,

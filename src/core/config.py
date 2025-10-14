@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     LOSSES_OUTPUT_DIR: str = str(config.get("losses_output_dir", ""))
     METRIC_OUTPUT_DIR: str = str(config.get("metric_output_dir", ""))
     PRED_TRUE_OUTPUT_DIR: str = str(config.get("pred_true_output_dir", ""))
+    FEATURE_IMPORTANCE_OUTPUT_DIR: str = str(config.get("feature_importance_output_dir", ""))
 
     AVAILABLE_ELEMENTS: list[str] = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]
     

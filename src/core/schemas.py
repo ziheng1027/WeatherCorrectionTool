@@ -156,3 +156,4 @@ class ModelTrainRequest(BaseModel):
     test_set_values: list[str]  # 年份列表或站点列表
     model: Literal["XGBoost", "LightGBM"] = Field(default="XGBoost", description="模型名称", example="XGBoost")
     early_stopping_rounds: str = Field(default="100", description="早停轮数, 模型训练过程中如果连续多少轮的验证集表现没有提升, 则停止训练", example="100")
+    

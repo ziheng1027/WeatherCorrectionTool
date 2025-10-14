@@ -1,6 +1,4 @@
-import os
-import json
-import pandas as pd
+# src/tasks/model_train.py
 from time import time
 from sqlalchemy.orm import Session
 

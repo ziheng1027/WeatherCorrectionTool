@@ -1,7 +1,7 @@
 # src/core/model_train.py
 import os
+import json
 import joblib
-import numpy as np
 import pandas as pd
 import xarray as xr
 from time import time
@@ -120,14 +120,15 @@ def train_model(
     """训练模型并返回训练和验证损失"""
     # 划分特征和标签
     label_col = ELEMENT_TO_DB_MAPPING[element]
-    train_X = train_dataset.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
+    train_X = train_dataset.drop(columns=['station_id', 'station_name', 'season', label_col])
     train_y = train_dataset[label_col]
-    test_X = test_dataset.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
+    test_X = test_dataset.drop(columns=['station_id', 'station_name', 'season', label_col])
     test_y = test_dataset[label_col]
 
     eval_set = [(train_X, train_y), (test_X, test_y)]
     eval_name = ["validation_0", "validation_1"]
     
+    # 开始训练
     start_time = time()
     print(f"开始训练模型: [{model_name}, {element}, {start_year}-{end_year}, {season}]")
     model = build_model(model_name, element)
@@ -149,23 +150,61 @@ def train_model(
             ]
         )
         results = model.evals_result_
+
+    # 计算模型预测指标
+    pred_y = model.predict(test_X)
+    metrics_test_pred = cal_metrics(test_y, pred_y)
+    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 模型评估指标[指定测试集的均值]:")
+    print(metrics_test_pred, " \n")
+
+    # 计算原始数据指标
+    element_db_column = ELEMENT_TO_DB_MAPPING[element]
+    test_grid = test_X[f"{element_db_column}_grid"]
+    metrics_test_true = cal_metrics(test_y, test_grid)
+    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 原始数据指标[指定测试集的均值]:")
+    print(metrics_test_true, " \n")
     
     # 获取训练和验证损失
     train_losses = results["validation_0"]["rmse"]
     test_losses = results["validation_1"]["rmse"]
     end_time = time()
-    print(f"[{model_name}, {element}] 训练完成, 耗时: {end_time - start_time:.2f}秒")
+    print(f"[{model_name}, {element}] 训练完成, 耗时: {end_time - start_time:.2f}秒\n")
+
+    # 保存训练/验证损失
+    losses_df = pd.DataFrame(
+        {
+            "epoch": range(1, len(train_losses) + 1),
+            "train_losses": train_losses,
+            "test_losses": test_losses
+        }
+    )
+    losses_dir = os.path.join(settings.LOSSES_OUTPUT_DIR, model_name)
+    os.makedirs(losses_dir, exist_ok=True)
+    losses_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_losses.csv"
+    losses_path = os.path.join(losses_dir, losses_file_name)
+    losses_df.to_csv(losses_path, index=False)
+    print(f"训练损失已保存到: {losses_path}")
+
+    # 保存测试集的总体评估指标(均值)
+    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
+    os.makedirs(metrics_dir, exist_ok=True)
+    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-all.json"
+    metrics_path = os.path.join(metrics_dir, metrics_file_name)
+    with open(metrics_path, "w") as f:
+        json.dump({
+            "test_true": metrics_test_true,
+            "test_pred": metrics_test_pred
+        }, f, indent=4)
+    print(f"测试集总体评估指标已保存到: {metrics_path}\n")
 
     # 保存模型
     checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
     os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
+    checkpoint_name = f"{model_name.lower()}_{element}_{start_year}_{end_year}_{season}.ckpt"
     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
     joblib.dump(model, checkpoint_path)
-    print(f"模型已保存到: {checkpoint_path}")
+    print(f"模型已保存到: {checkpoint_path}\n")
 
-    return train_losses, test_losses
- 
 def evaluate_model(
         model_name: str, test_dataset: pd.DataFrame,element: str, 
         start_year: str, end_year: str, season: str
@@ -177,43 +216,52 @@ def evaluate_model(
     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
     model = joblib.load(checkpoint_path)
 
-    # 划分特征和标签
+    # 划分特征
     label_col = ELEMENT_TO_DB_MAPPING[element]
-    test_X = test_dataset.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
-    test_y = test_dataset[label_col]
+    test_X = test_dataset.drop(columns=['station_id', 'station_name', 'season', label_col])
 
-    # 模型预测指标
-    pred_y = model.predict(test_X)
-    metrics_test_pred = cal_metrics(test_y, pred_y)
-    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 模型评估指标[指定测试集的均值]:")
-    print(metrics_test_pred, " \n")
-
-    # 原始数据指标
-    element_db_column = ELEMENT_TO_DB_MAPPING[element]
-    test_grid = test_X[f"{element_db_column}_grid"]
-    mrtrics_test_true = cal_metrics(test_y, test_grid)
-    print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 原始数据指标[指定测试集的均值]:")
-    print(mrtrics_test_true, " \n")
-
-    # 特征重要性
+    # 计算特征重要性
     feature_importance_dict = get_feature_importance(model, test_X)
     print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 特征重要性:")
     print(feature_importance_dict, " \n")
 
-    # 存放原始数据和模型预测指标
+    # 保存特征重要性
+    feature_importance_dir = os.path.join(settings.FEATURE_IMPORTANCE_OUTPUT_DIR, model_name)
+    os.makedirs(feature_importance_dir, exist_ok=True)
+    feature_importance_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_feature-importance.json"
+    feature_importance_path = os.path.join(feature_importance_dir, feature_importance_file_name)
+    with open(feature_importance_path, "w") as f:
+        json.dump(feature_importance_dict, f, indent=4)
+    print(f"特征重要性已保存到: {feature_importance_path}\n")
+
+    element_db_column = ELEMENT_TO_DB_MAPPING[element]
+    # 存放原始站点数据, 原始格点数据以及模型预测数据
+    results = []
+    # 存放原始数据指标和模型预测指标
     metrics_list = []
     # 按照站点分组
     station_dataset = test_dataset.groupby(["station_name"])
     # 计算每个站点的指标(基于当前测试集的起止年份+季节范围内,每个站点所有数据的均值)
     for station_name, station_data in station_dataset:
         # 划分特征和标签
-        station_test_X = station_data.drop(columns=['station_id', 'station_name', 'year', 'season', label_col])
+        station_test_X = station_data.drop(columns=['station_id', 'station_name', 'season', label_col])
         station_test_y = station_data[label_col]
 
         if station_test_X.empty: continue
-            
+        
+        # 模型预测
         station_test_grid = station_test_X[f"{element_db_column}_grid"]
         station_pred_y = model.predict(station_test_X)
+
+        # 添加到results
+        station_results = pd.DataFrame({
+            "station_name": [station_name[0]] * len(station_test_y),
+            "timestamp": pd.to_datetime(station_data[['year', 'month', 'day', 'hour']]),
+            "station_test_y": station_test_y,
+            "station_test_grid": station_test_grid,
+            "station_pred_y": station_pred_y
+        })
+        results.append(station_results)
 
         # 计算指标
         metrics_station_pred = cal_metrics(station_test_y, station_pred_y)
@@ -227,22 +275,26 @@ def evaluate_model(
         # 添加到metrics_list
         metrics_list.append(row_data)
     
+    # 保存原始站点数据, 原始格点数据以及模型预测数据
+    results_df = pd.concat(results, axis=0, ignore_index=True)
+    results_dir = os.path.join(settings.PRED_TRUE_OUTPUT_DIR, model_name)
+    os.makedirs(results_dir, exist_ok=True)
+    results_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_station-grid-pred.csv"
+    results_path = os.path.join(results_dir, results_file_name)
+    results_df.to_csv(results_path, index=False)
+    print(f"原始站点数据, 原始格点数据以及模型预测数据已保存到: {results_path}\n")
+
     metrics_df = pd.DataFrame(metrics_list)
-    
     print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 评估指标[指定测试集的均值]:")
     print(metrics_df)
 
-    result = {
-        "station_test_y": station_test_y,               # 真值
-        "station_test_grid": station_test_grid,         # 原始格点值
-        "station_pred_y": station_pred_y,               # 模型预测值
-        "metrics_pred_in_testset": metrics_test_pred,   # 模型评估指标[指定测试集的均值]
-        "metrics_true_in_testset": mrtrics_test_true,   # 原始数据指标[指定测试集的均值]
-        "feature_importance": feature_importance_dict,  # 特征重要性
-        "station_metrics": metrics_df                   # 每个站点的评估指标[指定测试集的均值]
-    }
-
-    return result
+    # 保存每个站点的评估指标(原始指标+模型指标)
+    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
+    os.makedirs(metrics_dir, exist_ok=True)
+    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-station.csv"
+    metrics_path = os.path.join(metrics_dir, metrics_file_name)
+    metrics_df.to_csv(metrics_path, index=False)
+    print(f"评估指标已保存到: {metrics_path}\n")
 
 def get_feature_importance(model, test_X: pd.DataFrame):
     """获取特征重要性"""
@@ -251,18 +303,19 @@ def get_feature_importance(model, test_X: pd.DataFrame):
             importance = model.feature_importances_
             feature_names = test_X.columns.to_list()
 
-            feature_importance_dict = {}
-            for i, (feature, importance_score) in enumerate(zip(feature_names, importance)):
-                feature_importance_dict[feature] = format(importance_score, ".4f")
+            feature_importance_dict = dict(zip(feature_names, importance))
             
-            # 降序排列
+            # 按数值降序排列
             feature_importance_dict = dict(
                 sorted(
-                    feature_importance_dict.items(), 
-                    key=lambda item: item[1], reverse=True
+                    feature_importance_dict.items(),
+                    key=lambda item: item[1],
+                    reverse=True
                 )
             )
-            return feature_importance_dict
+            
+            # 格式化输出
+            return {k: format(v, ".4f") for k, v in feature_importance_dict.items()}
         
     except Exception as e:
         print(f"获取特征重要性失败: {e}")
@@ -283,7 +336,8 @@ if __name__ == "__main__":
 
     dataset = build_dataset_from_db(db, settings.DEM_DATA_PATH, settings.LAGS_CONFIG, element, start_year, end_year, season)
     train_dataset, test_dataset = split_dataset(dataset, split_method, test_set_values)
-    train_losses, test_losses = train_model(
+    train_model(
         model_name, element, start_year, end_year, season, settings.EARLY_STOPING_ROUNDS, train_dataset, test_dataset
     )
+    
     evaluate_model(model_name, test_dataset, element, start_year, end_year, season)

@@ -1,7 +1,7 @@
 {
     "objective": "reg:squarederror",
     "learning_rate": 0.1,
-    "n_estimators": 1200,
+    "n_estimators": 1600,
     "max_depth": 8,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
