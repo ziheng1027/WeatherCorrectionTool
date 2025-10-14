@@ -126,19 +126,33 @@ class GridTimeSeriesResponse(BaseModel):
 
 class DataProcessingRequest(BaseModel):
     """用于接受数据处理请求的请求体模型"""
-    elements: List[str] = Field(..., description="要处理的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
-    start_year: str = Field(..., description="起始年份", example="2008")
-    end_year: str = Field(..., description="结束年份", example="2023")
-    num_workers: int = Field(..., description="工作进程数", example=48)
+    elements: List[str] = Field(default="温度", description="要处理的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
+    start_year: str = Field(default="2008", description="起始年份", example="2008")
+    end_year: str = Field(default="2023", description="结束年份", example="2023")
+    num_workers: int = Field(default=48, description="工作进程数", example=48)
+
+
+class ModelParamsUpdateRequest(BaseModel):
+    """用于接受模型参数更新请求的请求体模型"""
+    params: dict = Field(
+        ..., 
+        description="要更新的模型参数字典",
+        example={
+            "learning_rate": 0.1,
+            "n_estimators": 1500,
+            "subsample": 0.8,
+            "colsample_bytree": 0.8,
+        }
+    )
 
 
 class ModelTrainRequest(BaseModel):
     """用于接受模型训练请求的请求体模型"""
     element: AVAILABLE_ELEMENTS
-    start_year: str
-    end_year: str
-    season: str
-    test_split_method: Literal["按年份划分", "按站点划分"]
+    start_year: str = Field(default="2008", description="数据集的起始年份", example=["2008", "...", "2023"])
+    end_year: str = Field(default="2023", description="数据集的结束年份", example=["2008", "...", "2023"])
+    season: str = Field(default="春季", description="构建哪个季节的数据集?", example=["春季", "夏季", "秋季", "冬季", "全年"])
+    split_method: Literal["按年份划分", "按站点划分"] = Field(default="按年份划分", description="数据集划分方法", example=["按年份划分", "按站点划分"])
     test_set_values: list[str]  # 年份列表或站点列表
-    model: Literal["XGBoost", "LightGBM"]
-    model_params: dict
+    model: Literal["XGBoost", "LightGBM"] = Field(default="XGBoost", description="模型名称", example="XGBoost")
+    early_stopping_rounds: str = Field(default="100", description="早停轮数, 模型训练过程中如果连续多少轮的验证集表现没有提升, 则停止训练", example="100")

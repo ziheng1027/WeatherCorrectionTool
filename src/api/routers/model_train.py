@@ -1,0 +1,99 @@
+import uuid
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from sqlalchemy.orm import Session
+from ...db import crud
+from ...db.database import get_db
+from ...core.config import get_model_config_path, load_model_config, save_model_config
+from ...core.schemas import MessageResponse, ModelParamsUpdateRequest, ModelTrainRequest, TaskCreationResponse
+from ...tasks import model_train
+
+
+router = APIRouter(
+    prefix="/model-train",
+    tags=["模型训练"],
+)
+
+
+@router.get("/model-config/{model_name}/{element}", response_model=dict, summary="获取指定模型的当前超参数配置")
+def get_model_config(model_name: str, element: str):
+    """获取指定模型和要素的当前超参数配置"""
+    try:
+        model_config_path = get_model_config_path(model_name, element)
+        config = load_model_config(model_config_path)
+        return config
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取配置文件时发生未知错误: {str(e)}")
+
+
+@router.post("/model-config/{model_name}/{element}", response_model=MessageResponse,
+             summary="更新指定模型的超参数配置, 只会更新请求体中提供的、且在原始配置中已存在的参数")
+def update_model_config(
+    model_name: str, element: str, request: ModelParamsUpdateRequest
+):
+    """
+    更新指定模型和要素的超参数配置。
+    只会更新请求体中提供的、且在原始配置中已存在的参数。
+    """
+    try:
+        # 1. 加载现有的配置
+        model_config_path = get_model_config_path(model_name, element)
+        current_config = load_model_config(model_config_path)
+        
+        # 2. 遍历用户传入的参数并更新
+        updated_keys = []
+        for key, value in request.params.items():
+            if key in current_config:
+                current_config[key] = value
+                updated_keys.append(key)
+            else:
+                # 忽略不在原始配置中的键
+                print(f"警告: 参数 '{key}' 不在原始配置中, 已忽略。")
+
+        if not updated_keys:
+            raise HTTPException(status_code=400, detail="未提供任何有效的参数进行更新。")
+
+        # 3. 保存更新后的配置
+        save_model_config(model_config_path, current_config)
+        
+        return MessageResponse(message=f"模型参数更新成功, 已更新: {', '.join(updated_keys)}")
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException as e:
+        raise e # 重新抛出已知的HTTP异常
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新配置文件时发生未知错误: {e}")
+
+
+@router.post("/start", response_model=TaskCreationResponse, summary="启动模型训练任务")
+def start_model_train(
+    request: ModelTrainRequest, backgroud_tasks: BackgroundTasks, db: Session = Depends(get_db)
+):
+    """启动一个后台模型训练任务"""
+    # 检查是否有同类型的任务正在运行
+    processing_task_id = crud.is_task_type_processing(db, "ModelTrain")
+    if processing_task_id:
+        return TaskCreationResponse(
+            message="已有模型训练任务正在进行中, 请等待其完成后再试",
+            task_id=processing_task_id
+        )
+    
+    task_id = str(uuid.uuid4())
+    task_name = f"模型训练_{request.model}_{request.element}_{request.start_year}-{request.end_year}_{request.season}"
+    # 将Pydantic模型转换为字典以便存入数据库
+    params_dict = request.model_dump()
+
+    # 创建任务记录
+    crud.create_task(
+        db=db, task_id=task_id, task_name=task_name, task_type="ModelTrain", params=params_dict
+    )
+
+    # 启动后台任务
+    backgroud_tasks.add_task(model_train.train, task_id, request)
+
+    return TaskCreationResponse(
+        message="模型训练任务已启动",
+        task_id=task_id
+    )

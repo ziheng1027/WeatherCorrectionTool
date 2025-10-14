@@ -1,4 +1,5 @@
 # src/core/config.py
+import os
 import json
 import threading
 from typing import Dict, List, Any
@@ -25,11 +26,6 @@ def save_config_json(config_data: dict):
         json.dump(config_data, f, indent=4, ensure_ascii=False)
 
 
-def load_model_config(model_config_path: str):
-    """加载模型配置文件"""
-    with open(model_config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
 class Settings(BaseSettings):
     """配置文件读取类"""
     config: Dict[str, Any] = load_config_json()
@@ -43,10 +39,36 @@ class Settings(BaseSettings):
     MODEL_OUTPUT_DIR: str = str(config.get("model_output_dir", ""))
     CORRECTION_OUTPUT_DIR: str = str(config.get("correction_output_dir", ""))
 
-    AVAILABLE_ELEMENTS: list[str] = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]
-    CST_YEARS: List[int] = config.get("cst_years", [])
-    LAGS_CONFIG: Dict[str, Any] = config.get("lags_config", {})
-    EARLY_STOPING_ROUNDS: str = config.get("early_stopping_rounds", "100")
+    LOSSES_OUTPUT_DIR: str = str(config.get("losses_output_dir", ""))
+    METRIC_OUTPUT_DIR: str = str(config.get("metric_output_dir", ""))
+    PRED_TRUE_OUTPUT_DIR: str = str(config.get("pred_true_output_dir", ""))
 
+    AVAILABLE_ELEMENTS: list[str] = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"]
+    
+    CST_YEARS: List[int] = config.get("cst_years", [])
+    EARLY_STOPING_ROUNDS: str = config.get("early_stopping_rounds", "100")
+    LAGS_CONFIG: Dict[str, Any] = config.get("lags_config", {})
+    
 
 settings = Settings()
+
+
+def get_model_config_path(model_name: str, element: str) -> Path:
+    """根据模型名称和要素名称获取模型配置文件路径"""
+    model_name = model_name.lower()
+    model_config_filename = f"{model_name}_{element}.json"
+    return Path(settings.MODEL_CONFIG_DIR) / model_name / model_config_filename
+
+def load_model_config(model_config_path: str) -> dict:
+    """加载模型配置文件"""
+    if not model_config_path.exists():
+        raise FileNotFoundError(f"模型配置文件 {model_config_path} 不存在")
+    with open(model_config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_model_config(model_config_path: str, config_data: dict):
+    """将模型配置保存到指定文件"""
+    model_config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(model_config_path, "w", encoding="utf-8") as f:
+        json.dump(config_data, f, indent=4, ensure_ascii=False)
+        

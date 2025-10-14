@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..db import crud
 from ..utils.metrics import cal_metrics
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
-from ..core.config import settings, load_model_config
+from ..core.config import settings, get_model_config_path, load_model_config
 
 
 def get_season(month: int) -> str:
@@ -82,14 +82,14 @@ def build_dataset_from_db(
 
     return dataset
 
-def split_dataset(dataset: pd.DataFrame, split_method: str, test_years: list[str], test_stations: list[str]):
-    """划分数据[by_year, by_station], 返回train_X, train_y, test_X, test_y"""
-    if split_method == "by_year":
-        train_dataset = dataset[~dataset["年"].isin(test_years)]
-        test_dataset = dataset[dataset["年"].isin(test_years)]
-    elif split_method == "by_station":
-        train_dataset = dataset[~dataset["station_name"].isin(test_stations)]
-        test_dataset = dataset[dataset["station_name"].isin(test_stations)]
+def split_dataset(dataset: pd.DataFrame, split_method: str, test_set_values: list[str]):
+    """划分数据["按年份划分", "按站点划分"], 返回train_dataset, test_dataset"""
+    if split_method == "按年份划分":
+        train_dataset = dataset[~dataset["年"].isin(test_set_values)]
+        test_dataset = dataset[dataset["年"].isin(test_set_values)]
+    elif split_method == "按站点划分":
+        train_dataset = dataset[~dataset["station_name"].isin(test_set_values)]
+        test_dataset = dataset[dataset["station_name"].isin(test_set_values)]
     else:
         raise ValueError(f"不支持的数据集划分方法: {split_method}")
 
@@ -98,17 +98,14 @@ def split_dataset(dataset: pd.DataFrame, split_method: str, test_years: list[str
 def build_model(model_name: str, element: str):
     """根据传入的模型名称构建模型实例"""
     # 加载模型配置文件
-    model_name = model_name.lower()
-    model_config_dir = settings.MODEL_CONFIG_DIR
-    model_config_name = f"{model_name}_{element}.json"
-    model_config_path = os.path.join(model_config_dir, model_name, model_config_name)
+    model_config_path = get_model_config_path(model_name, element)
     model_config = load_model_config(model_config_path)
 
     # 定义模型实例
-    if model_name == "xgboost":
+    if model_name.lower() == "xgboost":
         from xgboost import XGBRegressor
         model = XGBRegressor(**model_config)
-    elif model_name == "lightgbm":
+    elif model_name.lower() == "lightgbm":
         from lightgbm import LGBMRegressor
         model = LGBMRegressor(**model_config)
     else:
@@ -134,7 +131,7 @@ def train_model(
     start_time = time()
     print(f"开始训练模型: [{model_name}, {element}, {start_year}-{end_year}, {season}]")
     model = build_model(model_name, element)
-    if model_name == "xgboost":
+    if model_name.lower() == "xgboost":
         model.set_params(
             early_stopping_rounds=int(early_stopping_rounds)
         )
@@ -142,7 +139,7 @@ def train_model(
             train_X, train_y, eval_set=eval_set, verbose=10
         )
         results = model.evals_result()
-    elif model_name == "lightgbm":
+    elif model_name.lower() == "lightgbm":
         import lightgbm as lgb
         model.fit(
             train_X, train_y, eval_set=eval_set, eval_names=eval_name, 
@@ -217,12 +214,12 @@ def evaluate_model(
             
         station_test_grid = station_test_X[f"{element_db_column}_grid"]
         station_pred_y = model.predict(station_test_X)
-        
+
         # 计算指标
         metrics_station_pred = cal_metrics(station_test_y, station_pred_y)
         metrics_station_true = cal_metrics(station_test_y, station_test_grid)
 
-        row_data = {"station_name": station_name}
+        row_data = {"station_name": station_name[0]}
         for metric in metrics_station_pred:
             row_data[f"原{metric}"] = metrics_station_true[metric]
             row_data[f"新{metric}"] = metrics_station_pred[metric]
@@ -236,10 +233,13 @@ def evaluate_model(
     print(metrics_df)
 
     result = {
-        "metrics_pred_in_testset": metrics_test_pred,
-        "metrics_true_in_testset": mrtrics_test_true,
-        "feature_importance": feature_importance_dict,
-        "station_metrics": metrics_df
+        "station_test_y": station_test_y,               # 真值
+        "station_test_grid": station_test_grid,         # 原始格点值
+        "station_pred_y": station_pred_y,               # 模型预测值
+        "metrics_pred_in_testset": metrics_test_pred,   # 模型评估指标[指定测试集的均值]
+        "metrics_true_in_testset": mrtrics_test_true,   # 原始数据指标[指定测试集的均值]
+        "feature_importance": feature_importance_dict,  # 特征重要性
+        "station_metrics": metrics_df                   # 每个站点的评估指标[指定测试集的均值]
     }
 
     return result
@@ -277,13 +277,13 @@ if __name__ == "__main__":
     start_year = "2020"
     end_year = "2020"
     season = "全年"
-    split_method = "by_station"
-    test_stations = ["老河口", "武穴", "竹山", "神农架", "阳新"]
+    split_method = "按站点划分"
+    test_set_values = ["老河口", "武穴", "竹山", "神农架", "阳新"]
 
 
     dataset = build_dataset_from_db(db, settings.DEM_DATA_PATH, settings.LAGS_CONFIG, element, start_year, end_year, season)
-    train_dataset, test_dataset = split_dataset(dataset, split_method, [], test_stations)
-    # train_losses, test_losses = train_model(
-    #     model_name, element, start_year, end_year, season, settings.EARLY_STOPING_ROUNDS, train_dataset, test_dataset
-    # )
+    train_dataset, test_dataset = split_dataset(dataset, split_method, test_set_values)
+    train_losses, test_losses = train_model(
+        model_name, element, start_year, end_year, season, settings.EARLY_STOPING_ROUNDS, train_dataset, test_dataset
+    )
     evaluate_model(model_name, test_dataset, element, start_year, end_year, season)
