@@ -129,7 +129,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         # 6. 将合并后的数据以parquet格式保存到临时目录
         update_task_status(db, subtask_id, "PROCESSING", 91.0, f"开始将合并后的数据保存到临时文件...")
         if not df_sg.empty:
-            print(f"|--->({element}, {year} 将 {len(df_sg)} 条合并后的数据写入临时文件: {output_file}")
+            print(f"|--->({element}, {year}) 将 {len(df_sg)} 条合并后的数据写入临时文件: {output_file}")
             df_sg.to_parquet(output_file, index=False)
         else:
             print(f"|--->({element}, {year} 警告: 合并后的数据为空, 跳过")
@@ -195,12 +195,12 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
                     print(f"|--> 主进程: 任务 {task_id} 已取消, 取消了 {canceled_count} 个子任务")
                     return
             
-            # 从数据库查询子任务状态来计算进度
-            sub_tasks_from_db = get_subtasks_by_parent_id(db, task_id)
-            completed_count = sum(1 for t in sub_tasks_from_db if t.status in ["COMPLETED", "FAILED"])
-            overall_progress = (completed_count / total_tasks) * 80
-            update_task_status(db, task_id, "PROCESSING", overall_progress, f"已完成 {completed_count}/{total_tasks + 1} 个子任务")
-            sleep(15)  # 每15秒检查一次进度
+                # 从数据库查询子任务状态来计算进度
+                sub_tasks_from_db = get_subtasks_by_parent_id(db, task_id)
+                completed_count = sum(1 for t in sub_tasks_from_db if t.status in ["COMPLETED", "FAILED"])
+                overall_progress = (completed_count / total_tasks) * 80
+                update_task_status(db, task_id, "PROCESSING", overall_progress, f"已完成 {completed_count}/{total_tasks + 1} 个子任务")
+                sleep(15)  # 每15秒检查一次进度
         
         finally:
             pool.close()
