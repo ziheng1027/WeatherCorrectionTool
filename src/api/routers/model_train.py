@@ -144,3 +144,39 @@ async def get_overall_metrics(request: schemas.ModelInfoRequest):
         return metrics
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取指标文件时发生错误: {str(e)}")
+
+
+@router.get("/global/pending", summary="【全局】获取所有待处理的任务列表")
+def get_all_pending_files(db: Session = Depends(get_db)):
+    """
+    查询历史上所有待处理的任务列表。
+    """
+    task_params = crud.get_global_task_by_status(db, task_type="ModelTrain_SubTask", status="PENDING")
+    return task_params
+
+
+@router.get("/global/processing", summary="【全局】获取所有处理中的任务列表")
+def get_all_processing_files(db: Session = Depends(get_db)):
+    """
+    查询历史上所有处理中的任务列表。
+    """
+    task_params = crud.get_global_task_by_status(db, task_type="ModelTrain_SubTask", status="PROCESSING")
+    return task_params
+
+
+@router.get("/global/completed", summary="【全局】获取所有已完成的任务列表")
+def get_all_completed_files(db: Session = Depends(get_db)):
+    """
+    查询历史上所有成功的任务列表。
+    """
+    task_params = crud.get_global_task_by_status(db, task_type="ModelTrain_SubTask", status="COMPLETED")
+    return task_params
+
+
+@router.get("/global/failed", summary="【全局】获取所有失败的任务列表")
+def get_all_failed_files(db: Session = Depends(get_db)):
+    """
+    查询历史上所有失败的任务列表。
+    """
+    task_params = crud.get_global_task_by_status(db, task_type="ModelTrain_SubTask", status="FAILED")
+    return task_params

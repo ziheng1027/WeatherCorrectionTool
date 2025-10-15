@@ -79,9 +79,42 @@ class TaskProgress(Base):
     task_params = Column(Text, comment="任务参数的JSON字符串")
     cur_progress = Column(Float, default=0.0, comment="当前进度(0.0 to 100.0)")
     progress_text = Column(String, default="任务已提交, 等待执行...", comment="任务进度的文字描述")
-    
+
     def set_params(self, params: dict):
         self.task_params = json.dumps(params, ensure_ascii=False)
 
     def get_params(self) -> dict:
         return json.loads(self.task_params) if self.task_params else {}
+
+
+class ModelVersion(Base):
+    """模型版本管理表"""
+    __tablename__ = "model_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    model_id = Column(String, unique=True, index=True, comment="模型唯一ID")
+    version = Column(Integer, default=1, comment="版本号")
+    model_name = Column(String, comment="模型类型(XGBoost/LightGBM)")
+    element = Column(String, comment="气象要素")
+    start_year = Column(String, comment="起始年份")
+    end_year = Column(String, comment="结束年份")
+    season = Column(String, comment="季节")
+    user_id = Column(String, index=True, comment="用户标识")
+    task_id = Column(String, index=True, comment="关联的任务ID")
+    model_params = Column(Text, comment="模型参数JSON")
+    training_params = Column(Text, comment="训练参数JSON")
+    created_time = Column(DateTime, default=datetime.now(), comment="创建时间")
+    file_path = Column(String, comment="模型文件路径")
+    # is_active = Column(Boolean, default=True, comment="是否活跃版本")
+
+    def set_model_params(self, params: dict):
+        self.model_params = json.dumps(params, ensure_ascii=False)
+
+    def get_model_params(self) -> dict:
+        return json.loads(self.model_params) if self.model_params else {}
+
+    def set_training_params(self, params: dict):
+        self.training_params = json.dumps(params, ensure_ascii=False)
+
+    def get_training_params(self) -> dict:
+        return json.loads(self.training_params) if self.training_params else {}

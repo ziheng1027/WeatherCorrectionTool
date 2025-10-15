@@ -78,7 +78,7 @@ def get_all_pending_files(db: Session = Depends(get_db)):
 @router.get("/global/processing", summary="【全局】获取所有处理中的任务列表")
 def get_all_processing_files(db: Session = Depends(get_db)):
     """
-    查询历史上所有导入中的任务列表。
+    查询历史上所有处理中的任务列表。
     """
     task_params = crud.get_global_task_by_status(db, task_type="DataProcess_SubTask", status="PROCESSING")
     return task_params
@@ -87,16 +87,16 @@ def get_all_processing_files(db: Session = Depends(get_db)):
 @router.get("/global/completed", summary="【全局】获取所有已完成的任务列表")
 def get_all_completed_files(db: Session = Depends(get_db)):
     """
-    查询历史上所有成功导入的任务列表。
+    查询历史上所有成功的任务列表。
     """
     task_params = crud.get_global_task_by_status(db, task_type="DataProcess_SubTask", status="COMPLETED")
     return task_params
 
 
-@router.get("/global/failed_files", summary="【全局】获取所有失败的任务列表")
+@router.get("/global/failed", summary="【全局】获取所有失败的任务列表")
 def get_all_failed_files(db: Session = Depends(get_db)):
     """
-    查询历史上所有导入失败的文件名列表。
+    查询历史上所有失败的文件名列表。
     """
     task_params = crud.get_global_task_by_status(db, task_type="DataProcess_SubTask", status="FAILED")
     return task_params

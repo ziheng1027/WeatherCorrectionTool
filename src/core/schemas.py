@@ -148,14 +148,14 @@ class ModelParamsUpdateRequest(BaseModel):
 
 class ModelTrainRequest(BaseModel):
     """用于接受模型训练请求的请求体模型"""
-    element: AVAILABLE_ELEMENTS
+    element: list[str] = Field(default=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"], description="要训练的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
     start_year: str = Field(default="2008", description="数据集的起始年份", example=["2008", "...", "2023"])
     end_year: str = Field(default="2023", description="数据集的结束年份", example=["2008", "...", "2023"])
     season: str = Field(default="春季", description="构建哪个季节的数据集?", example=["春季", "夏季", "秋季", "冬季", "全年"])
     split_method: Literal["按年份划分", "按站点划分"] = Field(default="按年份划分", description="数据集划分方法", example=["按年份划分", "按站点划分"])
     test_set_values: list[str]  # 年份列表或站点列表
     model: Literal["XGBoost", "LightGBM"] = Field(default="XGBoost", description="模型名称", example="XGBoost")
-    early_stopping_rounds: str = Field(default="100", description="早停轮数, 模型训练过程中如果连续多少轮的验证集表现没有提升, 则停止训练", example="100")
+    early_stopping_rounds: str = Field(default="150", description="早停轮数, 模型训练过程中如果连续多少轮的验证集表现没有提升, 则停止训练", example="100")
 
 
 class ModelInfoRequest(BaseModel):
