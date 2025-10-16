@@ -1,4 +1,5 @@
 # src/api/routers/model_train.py
+import os
 import uuid
 import json
 import pandas as pd
@@ -108,10 +109,10 @@ def start_model_train(
 @router.post("/get-losses", response_model=schemas.LossesResponse, summary="获取训练损失/验证损失")
 async def get_training_losses(request: schemas.ModelInfoRequest):
     """根据模型信息获取训练/验证损失, 用于绘制损失曲线"""
-    user_name = request.user_name
+    task_id = request.task_id
     model_name = request.model.lower()
-    losses_dir = Path(settings.LOSSES_OUTPUT_DIR) / user_name / model_name
-    losses_file_name = f"{model_name}_{request.element}_{request.start_year}_{request.end_year}_{request.season}_losses.csv"
+    losses_dir = Path(settings.LOSSES_OUTPUT_DIR) / model_name
+    losses_file_name = f"{model_name}_{request.element}_{request.start_year}_{request.end_year}_{request.season}_{task_id}.csv"
     losses_file_path = losses_dir / losses_file_name
 
     if not losses_file_path.exists():
@@ -131,10 +132,10 @@ async def get_training_losses(request: schemas.ModelInfoRequest):
 @router.post("get-metrics-testset-all", response_model=schemas.MetricsResponse, summary="获取测试集所有站点的整体评估指标")
 async def get_overall_metrics(request: schemas.ModelInfoRequest):
     """根据模型信息获取测试集所有站点的整体评估指标"""
-    user_name = request.user_name
+    task_id = request.task_id
     model_name = request.model.lower()
-    metrics_dir = Path(settings.METRIC_OUTPUT_DIR) / user_name / model_name / "overall"
-    metrics_file_name = f"{model_name}_{request.element}_{request.start_year}_{request.end_year}_{request.season}_testset-all.json"
+    metrics_dir = Path(settings.METRIC_OUTPUT_DIR) / model_name / "overall"
+    metrics_file_name = f"{model_name}_{request.element}_{request.start_year}_{request.end_year}_{request.season}_{task_id}.json"
     metrics_file_path = metrics_dir / metrics_file_name
 
     if not metrics_file_path.exists():
@@ -183,3 +184,49 @@ def get_all_failed_files(db: Session = Depends(get_db)):
     task_params = crud.get_global_task_by_status(db, task_type="ModelTrain_SubTask", status="FAILED")
     return task_params
 
+
+@router.get("/save-model-record", response_model=schemas.MessageResponse, summary="向数据库保存一条模型记录")
+def save_model_record(task_id: str, db: Session = Depends(get_db)):
+    """根据已完成的模型训练任务id, 向数据库保存一条模型记录"""
+    task = crud.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"该任务不存在: {task_id}")
+
+    if task.task_type not in ["ModelTrain", "ModelTrain_SubTask"]:
+        raise HTTPException(status_code=400, detail=f"该任务不是模型训练任务: {task_id}")
+    
+    if task.status != "COMPLETED":
+        raise HTTPException(status_code=400, detail=f"该任务未完成, 无法保存模型记录: {task_id}")
+
+    # 检查是否已经存在该任务的模型记录
+    existing_record = crud.get_model_record_by_task_id(db, task_id)
+    if existing_record:
+        raise HTTPException(status_code=400, detail=f"该任务的模型记录已经存在: {task_id}")
+    
+    # 解析所需信息
+    params = task.get_params()
+    model_name = params.get("model")
+    element = params.get("element")
+    start_year = params.get("start_year")
+    end_year = params.get("end_year")
+    season = params.get("season")
+    # 构建模型路径
+    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name.lower())
+    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_id={task_id}.ckpt"
+    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+    # 获取当前的模型参数
+    model_config_path = get_model_config_path(model_name, element)
+    model_config = load_model_config(model_config_path)
+    # 模型记录信息
+    model_info = {
+        "model_id": str(uuid.uuid4()),
+        "model_name": model_name,
+        "element": element,
+        "train_params": params.get("task_params", {}),
+        "model_params": model_config,
+        "model_path": checkpoint_path,
+        "task_id": task_id
+    }
+    
+    crud.create_model_record(db, model_info)
+    return schemas.MessageResponse(message="模型记录已保存")

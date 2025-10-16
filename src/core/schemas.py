@@ -148,7 +148,6 @@ class ModelParamsUpdateRequest(BaseModel):
 
 class ModelTrainRequest(BaseModel):
     """用于接受模型训练请求的请求体模型"""
-    user_name: str = Field(..., description="用户名", example="user_1")
     element: list[str] = Field(default=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"], description="要训练的气象要素", example=["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"])
     start_year: str = Field(default="2008", description="数据集的起始年份", example=["2008", "...", "2023"])
     end_year: str = Field(default="2023", description="数据集的结束年份", example=["2008", "...", "2023"])
@@ -161,7 +160,7 @@ class ModelTrainRequest(BaseModel):
 
 class ModelInfoRequest(BaseModel):
     """用于接受模型信息请求的请求体模型, 以便查询结果"""
-    user_name: str = Field(..., description="用户名", example="user_1")
+    task_id: str = Field(..., description="任务ID")
     model: Literal["XGBoost", "LightGBM"] = Field(..., description="模型名称")
     element: AVAILABLE_ELEMENTS
     start_year: str = Field(..., description="数据集的起始年份")

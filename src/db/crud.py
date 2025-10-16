@@ -388,25 +388,19 @@ def get_proc_data_to_build_dataset(db: Session, element: str, start_year: str, e
 def create_model_record(db: Session, model_info: dict) -> db_models.ModelRecord:
     """在数据库中创建一条新的模型记录"""
     record = db_models.ModelRecord(
-        user_name = model_info["user_name"],
-        element = model_info["element"],
         model_id = model_info["model_id"],
         model_name = model_info["model_name"],
-        rmse = model_info["rmse"],
+        element = model_info["element"],
         model_path = model_info["model_path"],
         task_id = model_info["task_id"],
     )
-    record.set_metrics(model_info["metrics"])
     record.set_train_params(model_info["train_params"])
     record.set_model_params(model_info["model_params"])
     db.add(record)
     db.commit()
-    db.refresh()
+    db.refresh(record)
     return record
 
-def get_models_by_user(db: Session, user_name: str, element: Optional[str] = None) -> List[db_models.ModelRecord]:
-    """获取指定用户-要素(可选)的模型记录"""
-    query = db.query(db_models.ModelRecord).filter(db_models.ModelRecord.user_name == user_name)
-    if element:
-        query = query.filter(db_models.ModelRecord.element == element)
-    return query.order_by(db_models.ModelRecord.create_time.desc()).all()
+def get_model_record_by_task_id(db: Session, task_id: str) -> Optional[db_models.ModelRecord]:
+    """根据task_id获取模型记录"""
+    return db.query(db_models.ModelRecord).filter(db_models.ModelRecord.task_id == task_id).first()

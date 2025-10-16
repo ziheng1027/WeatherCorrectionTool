@@ -92,13 +92,10 @@ class ModelRecord(Base):
     __tablename__ = "model_record"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_name = Column(String, index=True, comment="用户名")
-    element = Column(String, comment="气象要素, 如温度")
     model_id = Column(String, unique=True, index=True, comment="模型唯一ID")
     model_name = Column(String, index=True, comment="模型名称, 如XGBoost")
+    element = Column(String, index=True, comment="气象要素, 如温度")
     create_time = Column(DateTime, default=datetime.now(), comment="模型保存时间")
-    rmse = Column(String, comment="模型指标, RMSE")
-    metrics = Column(Text, comment="模型指标, JSON字符串")
     train_params = Column(Text, comment="训练参数, JSON字符串")
     model_params = Column(Text, comment="模型参数的JSON字符串")
     model_path = Column(String, comment="模型文件路径")
@@ -120,10 +117,3 @@ class ModelRecord(Base):
         """获取模型参数"""
         return json.loads(self.model_params) if self.model_params else {}
     
-    def set_metrics(self, metrics: dict):
-        """设置模型指标"""
-        self.metrics = json.dumps(metrics, ensure_ascii=False)
-
-    def get_metrics(self) -> dict:
-        """获取模型指标"""
-        return json.loads(self.metrics) if self.metrics else {}

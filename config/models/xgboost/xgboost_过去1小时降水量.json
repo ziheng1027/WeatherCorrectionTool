@@ -1,11 +1,11 @@
 {
     "objective": "reg:squarederror",
-    "learning_rate": 0.01,
-    "n_estimators": 1200,
-    "max_depth": 8,
-    "subsample": 0.8,
-    "colsample_bytree": 0.8,
-    "reg_alpha": 1.0,
+    "learning_rate": 0.001,
+    "n_estimators": 100,
+    "max_depth": 3,
+    "subsample": 0.1,
+    "colsample_bytree": 0.1,
+    "reg_alpha": 0.1,
     "eval_metric": "rmse",
     "tree_method": "hist"
 }

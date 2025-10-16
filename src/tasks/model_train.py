@@ -74,16 +74,15 @@ def train(task_id: str, request: ModelTrainRequest):
                     request.early_stopping_rounds, train_dataset, test_dataset
                 )
                 rmse = metrics_pred["RMSE"]
-
                 print(f"|--> [Task ID: {activate_subtask_id}] {element} 模型训练完成, 已耗时: {time() - start_time:.2f}秒")
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 90.0, f"{element} 模型训练已完成")
                 # 更新任务状态: 正在保存模型、训练损失以及整体指标
                 print(f"|--> [Task ID: {activate_subtask_id}] 正在保存模型、训练损失和整体指标...")
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 95.0, "正在保存模型、训练损失以及整体指标...")
 
-                save_model(model, request.model, element, request.start_year, request.end_year, request.season, request.user_name, rmse)
-                save_losses(train_losses, test_losses, request.model, element, request.start_year, request.end_year, request.season, request.user_name)
-                save_metrics_in_testset_all(metrics_true, metrics_pred, request.model, element, request.start_year, request.end_year, request.season, request.user_name)
+                save_model(model, request.model, element, request.start_year, request.end_year, request.season, activate_subtask_id)
+                save_losses(train_losses, test_losses, request.model, element, request.start_year, request.end_year, request.season, activate_subtask_id)
+                save_metrics_in_testset_all(metrics_true, metrics_pred, request.model, element, request.start_year, request.end_year, request.season, activate_subtask_id)
                 
                 print(f"|--> [Task ID: {activate_subtask_id}] {element} 训练损失和整体指标保存完成, 已耗时: {time() - start_time:.2f}秒")
                 crud.update_task_status(db, activate_subtask_id, "COMPLETED", 100.0, "模型、训练损失和整体指标保存已完成")
