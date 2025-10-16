@@ -1,7 +1,7 @@
 # src/db/crud.py
 import pandas as pd
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import text, exists
 from sqlalchemy.orm import Session
 # 导入针对 SQLite 的特殊 insert 语句构造器
@@ -152,7 +152,7 @@ def get_global_filenames_by_status(db: Session, task_type: str, status: str) -> 
 
 def get_global_task_by_status(db: Session, task_type: str, status: str) -> list[str]:
     """
-    【全局查询】获取所有状态为 `status` 的数据导入子任务, 并返回任务参数。
+    【全局查询】获取所有状态为 `status` 的子任务, 并返回任务参数。
 
     注意：这个函数不区分父任务，会返回所有历史任务中符合条件的子任务。
     """
@@ -160,18 +160,19 @@ def get_global_task_by_status(db: Session, task_type: str, status: str) -> list[
         db_models.TaskProgress.task_type == task_type,
         db_models.TaskProgress.status == status
     ).order_by(db_models.TaskProgress.end_time.desc()).all()
-    params_list = []
+    info_list = []
     for task in tasks:
         params_dict = task.get_params()
-        if status == "PROCESSING":
-            progress = task.cur_progress
-            progress_text = task.progress_text
-            params_dict["progress"] = progress
-            params_dict["progress_text"] = progress_text
         if params_dict:
-            params_list.append(params_dict)
+            params_dict["task_id"] = task.task_id
+            if status == "PROCESSING":
+                progress = task.cur_progress
+                progress_text = task.progress_text
+                params_dict["progress"] = progress
+                params_dict["progress_text"] = progress_text
+            info_list.append(params_dict)
 
-    return params_list
+    return info_list
 
 """--------------------数据导入--------------------"""
 def delete_pending_data_import_subtasks(db: Session) -> int:
@@ -383,3 +384,29 @@ def get_proc_data_to_build_dataset(db: Session, element: str, start_year: str, e
         print(f"查询数据时出错: {e}")
         db.rollback()
         raise
+
+def create_model_record(db: Session, model_info: dict) -> db_models.ModelRecord:
+    """在数据库中创建一条新的模型记录"""
+    record = db_models.ModelRecord(
+        user_name = model_info["user_name"],
+        element = model_info["element"],
+        model_id = model_info["model_id"],
+        model_name = model_info["model_name"],
+        rmse = model_info["rmse"],
+        model_path = model_info["model_path"],
+        task_id = model_info["task_id"],
+    )
+    record.set_metrics(model_info["metrics"])
+    record.set_train_params(model_info["train_params"])
+    record.set_model_params(model_info["model_params"])
+    db.add(record)
+    db.commit()
+    db.refresh()
+    return record
+
+def get_models_by_user(db: Session, user_name: str, element: Optional[str] = None) -> List[db_models.ModelRecord]:
+    """获取指定用户-要素(可选)的模型记录"""
+    query = db.query(db_models.ModelRecord).filter(db_models.ModelRecord.user_name == user_name)
+    if element:
+        query = query.filter(db_models.ModelRecord.element == element)
+    return query.order_by(db_models.ModelRecord.create_time.desc()).all()

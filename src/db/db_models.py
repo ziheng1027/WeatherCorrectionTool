@@ -1,7 +1,7 @@
 # src/db/db_models.py
 import json
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, UniqueConstraint, ForeignKey
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -87,34 +87,43 @@ class TaskProgress(Base):
         return json.loads(self.task_params) if self.task_params else {}
 
 
-class ModelVersion(Base):
-    """模型版本管理表"""
-    __tablename__ = "model_versions"
+class ModelRecord(Base):
+    """已训练且保存的模型记录表"""
+    __tablename__ = "model_record"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_name = Column(String, index=True, comment="用户名")
+    element = Column(String, comment="气象要素, 如温度")
     model_id = Column(String, unique=True, index=True, comment="模型唯一ID")
-    version = Column(Integer, default=1, comment="版本号")
-    model_name = Column(String, comment="模型类型(XGBoost/LightGBM)")
-    element = Column(String, comment="气象要素")
-    start_year = Column(String, comment="起始年份")
-    end_year = Column(String, comment="结束年份")
-    season = Column(String, comment="季节")
-    user_id = Column(String, index=True, comment="用户标识")
-    task_id = Column(String, index=True, comment="关联的任务ID")
-    model_params = Column(Text, comment="模型参数JSON")
-    training_params = Column(Text, comment="训练参数JSON")
-    created_time = Column(DateTime, default=datetime.now(), comment="创建时间")
-    file_path = Column(String, comment="模型文件路径")
-    # is_active = Column(Boolean, default=True, comment="是否活跃版本")
+    model_name = Column(String, index=True, comment="模型名称, 如XGBoost")
+    create_time = Column(DateTime, default=datetime.now(), comment="模型保存时间")
+    rmse = Column(String, comment="模型指标, RMSE")
+    metrics = Column(Text, comment="模型指标, JSON字符串")
+    train_params = Column(Text, comment="训练参数, JSON字符串")
+    model_params = Column(Text, comment="模型参数的JSON字符串")
+    model_path = Column(String, comment="模型文件路径")
+    task_id = Column(String, ForeignKey("task_progress.task_id"), comment="关联的训练任务ID")
+
+    def set_train_params(self, params: dict):
+        """设置训练参数"""
+        self.train_params = json.dumps(params, ensure_ascii=False)
+    
+    def get_train_params(self) -> dict:
+        """获取训练参数"""
+        return json.loads(self.train_params) if self.train_params else {}
 
     def set_model_params(self, params: dict):
+        """设置模型参数"""
         self.model_params = json.dumps(params, ensure_ascii=False)
 
     def get_model_params(self) -> dict:
+        """获取模型参数"""
         return json.loads(self.model_params) if self.model_params else {}
+    
+    def set_metrics(self, metrics: dict):
+        """设置模型指标"""
+        self.metrics = json.dumps(metrics, ensure_ascii=False)
 
-    def set_training_params(self, params: dict):
-        self.training_params = json.dumps(params, ensure_ascii=False)
-
-    def get_training_params(self) -> dict:
-        return json.loads(self.training_params) if self.training_params else {}
+    def get_metrics(self) -> dict:
+        """获取模型指标"""
+        return json.loads(self.metrics) if self.metrics else {}

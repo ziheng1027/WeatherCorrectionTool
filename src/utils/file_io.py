@@ -117,30 +117,26 @@ def safe_open_mfdataset(grid_files, **kwargs):
             raise
 
 def save_model(
-        model: object, model_name: str, element: str, 
-        start_year: str, end_year: str, season: str
+        model: object, model_name: str, element: str, start_year: str, 
+        end_year: str, season: str, user_name: str, rmse: str
     ):
     """保存模型"""
     model_name = model_name.lower()
-    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
+    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, user_name, model_name)
     os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
+    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_rmse={rmse}.ckpt"
     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
     joblib.dump(model, checkpoint_path)
     print(f"模型已保存到: {checkpoint_path}\n")
 
-def load_model(model_name: str, element: str, start_year: str, end_year: str, season: str):
+def load_model(model_path):
     """加载模型"""
-    model_name = model_name.lower()
-    checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
-    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}.ckpt"
-    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
-    model = joblib.load(checkpoint_path)
+    model = joblib.load(model_path)
     return model
 
 def save_losses(
         train_losses: list, test_losses: list, model_name: str, element: str,
-        start_year: str, end_year: str, season: str
+        start_year: str, end_year: str, season: str, user_name: str
     ):
     """保存训练和测试损失"""
     model_name = model_name.lower()
@@ -149,7 +145,7 @@ def save_losses(
         "train_loss": train_losses,
         "test_loss": test_losses
     })
-    losses_dir = os.path.join(settings.LOSSES_OUTPUT_DIR, model_name)
+    losses_dir = os.path.join(settings.LOSSES_OUTPUT_DIR, user_name, model_name)
     os.makedirs(losses_dir, exist_ok=True)
     losses_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_losses.csv"
     losses_path = os.path.join(losses_dir, losses_file_name)
@@ -158,11 +154,11 @@ def save_losses(
 
 def save_metrics_in_testset_all(
         metrics_true: dict, metrics_pred: dict, model_name: str, element: str,
-        start_year: str, end_year: str, season: str
+        start_year: str, end_year: str, season: str, user_name: str
     ):
     """保存测试集的整体指标(所有站点均值)"""
     model_name = model_name.lower()
-    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
+    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, user_name, model_name, "overall")
     os.makedirs(metrics_dir, exist_ok=True)
     metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-all.json"
     metrics_path = os.path.join(metrics_dir, metrics_file_name)
@@ -175,11 +171,11 @@ def save_metrics_in_testset_all(
 
 def save_metrics_in_testset_station(
         metrics_df: pd.DataFrame, model_name: str, element: str,
-        start_year: str, end_year: str, season: str
+        start_year: str, end_year: str, season: str, user_name: str
     ):
     """保存测试集的站点指标(每个站点的均值)"""
     model_name = model_name.lower()
-    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name)
+    metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, user_name, model_name, "station")
     os.makedirs(metrics_dir, exist_ok=True)
     metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-station.csv"
     metrics_path = os.path.join(metrics_dir, metrics_file_name)
@@ -188,11 +184,11 @@ def save_metrics_in_testset_station(
 
 def save_feature_importance(
         feature_importance: dict, model_name: str, element: str,
-        start_year: str, end_year: str, season: str
+        start_year: str, end_year: str, season: str, user_name: str
     ):
     """保存特征重要性"""
     model_name = model_name.lower()
-    importance_dir = os.path.join(settings.FEATURE_IMPORTANCE_OUTPUT_DIR, model_name)
+    importance_dir = os.path.join(settings.FEATURE_IMPORTANCE_OUTPUT_DIR, user_name, model_name)
     os.makedirs(importance_dir, exist_ok=True)
     importance_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_feature-importance.json"
     importance_path = os.path.join(importance_dir, importance_file_name)
@@ -202,11 +198,11 @@ def save_feature_importance(
 
 def save_true_pred(
         result_df: pd.DataFrame, model_name: str, element: str,
-        start_year: str, end_year: str, season: str
+        start_year: str, end_year: str, season: str, user_name: str
     ):
     """保存站点数据、格点数据、预测数据"""
     model_name = model_name.lower()
-    result_dir = os.path.join(settings.PRED_TRUE_OUTPUT_DIR, model_name)
+    result_dir = os.path.join(settings.PRED_TRUE_OUTPUT_DIR, user_name, model_name)
     os.makedirs(result_dir, exist_ok=True)
     result_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_station-grid-pred.csv"
     result_path = os.path.join(result_dir, result_file_name)
