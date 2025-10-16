@@ -136,6 +136,7 @@ def get_global_filenames_by_status(db: Session, task_type: str, status: str) -> 
 
     file_names = []
     progress = None
+    progress_text = None
     for task in tasks:
         # 修正 #1: 使用 task.get_params() 方法将JSON字符串安全地转换为字典
         params_dict = task.get_params()

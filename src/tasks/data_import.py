@@ -88,12 +88,10 @@ def run_station_data_import(task_id: str, dir: str):
                     
                     df_renamed = df_chunk.rename(columns=RAW_STATION_DATA_TO_DB_MAPPING)
                     df_renamed["timestamp"] = pd.to_datetime(df_renamed[["year", "month", "day", "hour"]])
-                    # 添加源文件列
-                    df_renamed["source_file"] = file_name
 
                     final_columns = [
                         "station_id", "station_name", "lat", "lon", "timestamp", "year", "month", "day", "hour",
-                        "temperature", "humidity", "precipitation_1h", "wind_speed_2min", "source_file"
+                        "temperature", "humidity", "precipitation_1h", "wind_speed_2min"
                     ]
                     # 将这个小的df存入数据库
                     # crud.bulk_insert_raw_station_data(db, df_renamed[final_columns])
