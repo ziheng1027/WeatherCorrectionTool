@@ -1,5 +1,4 @@
 # src/core/config.py
-import os
 import json
 import threading
 from typing import Dict, List, Any

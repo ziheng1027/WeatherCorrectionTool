@@ -1,5 +1,4 @@
 # src/core/model_train.py
-import os
 import pandas as pd
 import xarray as xr
 from time import time

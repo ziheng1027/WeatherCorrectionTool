@@ -3,12 +3,12 @@ import uuid
 from threading import Thread, Lock
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ...core.schemas import TaskCreationResponse, MessageResponse, FileListResponse
 from ...db import crud
-from ...core.config import STOP_EVENT
 from ...db.database import get_db
-from ...tasks.data_import import run_station_data_import
+from ...core.schemas import TaskCreationResponse, MessageResponse, FileListResponse
+from ...core.config import STOP_EVENT
 from ...core.config import load_config_json
+from ...tasks.data_import import run_station_data_import
 from ...utils.file_io import get_station_files
 
 

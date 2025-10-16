@@ -1,7 +1,7 @@
 # src/db/crud.py
 import pandas as pd
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from sqlalchemy import text, exists
 from sqlalchemy.orm import Session
 # 导入针对 SQLite 的特殊 insert 语句构造器

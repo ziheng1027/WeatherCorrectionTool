@@ -2,10 +2,9 @@
 import uuid
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
-
-from ...core import schemas
 from ...db import crud
 from ...db.database import get_db
+from ...core import schemas
 from ...core.config import STOP_EVENT
 from ...tasks.data_process import process_mp
 

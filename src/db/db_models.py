@@ -2,7 +2,6 @@
 import json
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, UniqueConstraint, ForeignKey
-from sqlalchemy.sql import func
 from .database import Base
 
 

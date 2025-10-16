@@ -15,12 +15,11 @@ from ..db.crud import (
 )
 from ..core.config import settings, STOP_EVENT
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING
-from ..utils.file_io import get_grid_files, safe_open_mfdataset
 from ..core.data_process import (
-    clean_station_data, extract_grid_values_for_stations, merge_sg_df,
-    import_proc_data_from_temp_files
+    clean_station_data, extract_grid_values_for_stations,
+    merge_sg_df, import_proc_data_from_temp_files
 )
-
+from ..utils.file_io import get_grid_files, safe_open_mfdataset
 
 
 TEMP_DATA_DIR = Path("output/temp_data")
