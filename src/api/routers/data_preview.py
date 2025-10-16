@@ -1,15 +1,14 @@
 # src/api/routers/data_preview.py
 import uuid
-from typing import List
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from threading import Lock
 from ...db import crud
+from ...db.database import get_db
 from ...core import schemas
 from ...core.config import settings
 from ...core.data_mapping import get_name_to_id_mapping
 from ...core.data_preview import get_grid_data_at_time, get_grid_time_series_for_coord
-from ...db.database import SessionLocal, get_db
 
 
 # 存储进度查询任务的状态
