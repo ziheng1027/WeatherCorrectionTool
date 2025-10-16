@@ -60,11 +60,16 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             print(f"|---> {year} 年的 {element} 数据未处理, 准备开始处理...")
 
         # 1. 从数据库读取指定element, year的所有站点数据表df(分块读取)
-        update_task_status(db, subtask_id, "PROCESSING", 6.0, f"开始读取 {year} 年的 {element} 站点数据...")
-        db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
-        df_itrator = get_raw_station_data_by_year(db, db_column_name, int(year), chunk_size=8760)
-        update_task_status(db, subtask_id, "PROCESSING", 10.0, f"已读取 {year} 年的 {element} 站点数据")
-
+        try:
+            update_task_status(db, subtask_id, "PROCESSING", 6.0, f"开始读取 {year} 年的 {element} 站点数据...")
+            db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
+            df_itrator = get_raw_station_data_by_year(db, db_column_name, int(year), chunk_size=8760)
+            update_task_status(db, subtask_id, "PROCESSING", 10.0, f"已读取 {year} 年的 {element} 站点数据")
+        except Exception as e:
+            print(f"|---> 警告: 读取 {year} 年的 {element} 站点数据时发生错误: {e}")
+            update_task_status(db, subtask_id, "FAILED", 0.0, f"读取 {year} 年的 {element} 站点数据时发生错误: {e}")
+            return
+        
         # 2. 数据清洗, 分块清洗
         cleaned_chunks = [] # 搜集清洗后的数据块
         total_raws = 0
@@ -110,21 +115,31 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             print(f"({element}, {year}年) 备选合并方案成功打开格点数据")
         except Exception as e:
             print(f"({element}, {year}年) 错误: 无法打开格点数据文件: {e}")
+            update_task_status(db, subtask_id, "FAILED", 0.0, f"打开格点数据文件失败: {e}")
             return
 
-        grid_df = extract_grid_values_for_stations(ds, ELEMENT_TO_NC_MAPPING.get(element), station_coords, year)
-        ds.close()
-        update_task_status(db, subtask_id, "PROCESSING", 60.0, f"格点数据提取完成, 已提取 {len(grid_df)} 条格点记录")
-        print(f"耗时: {time() - start_time:.2f} 秒, 共提取 {len(grid_df)} 条格点记录")
-    
+        try:
+            grid_df = extract_grid_values_for_stations(ds, ELEMENT_TO_NC_MAPPING.get(element), station_coords, year)
+            ds.close()
+            update_task_status(db, subtask_id, "PROCESSING", 60.0, f"格点数据提取完成, 已提取 {len(grid_df)} 条格点记录")
+            print(f"耗时: {time() - start_time:.2f} 秒, 共提取 {len(grid_df)} 条格点记录")
+        except Exception as e:
+            print(f"({element}, {year}年) 错误: 无法提取格点数据: {e}")
+            update_task_status(db, subtask_id, "FAILED", 0.0, f"提取格点数据失败: {e}")
+            return
+        
         # 5. 合并站点数据和格点数据
-        update_task_status(db, subtask_id, "PROCESSING", 61.0, f"开始合并站点数据和格点数据...")
-        print(f"|--->({element}, {year}) 开始合并站点数据和格点数据...")
-        start_time = time()
-        df_sg = merge_sg_df(df_cleaned, grid_df, element)
-        update_task_status(db, subtask_id, "PROCESSING", 90.0, f"站点数据和格点数据合并完成, 共得到 {len(df_sg)} 条记录")
-        print(f"耗时: {time() - start_time:.2f} 秒, 共合并得到 {len(df_sg)} 条记录")
-
+        try:
+            update_task_status(db, subtask_id, "PROCESSING", 61.0, f"开始合并站点数据和格点数据...")
+            print(f"|--->({element}, {year}) 开始合并站点数据和格点数据...")
+            start_time = time()
+            df_sg = merge_sg_df(df_cleaned, grid_df, element)
+            update_task_status(db, subtask_id, "PROCESSING", 90.0, f"站点数据和格点数据合并完成, 共得到 {len(df_sg)} 条记录")
+            print(f"耗时: {time() - start_time:.2f} 秒, 共合并得到 {len(df_sg)} 条记录")
+        except Exception as e:
+            print(f"|--->({element}, {year}) 错误: 站点数据和格点数据合并失败: {e}")
+            update_task_status(db, subtask_id, "FAILED", 0.0, f"站点数据和格点数据合并失败: {e}")
+            return
         # 6. 将合并后的数据以parquet格式保存到临时目录
         update_task_status(db, subtask_id, "PROCESSING", 91.0, f"开始将合并后的数据保存到临时文件...")
         if not df_sg.empty:

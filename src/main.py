@@ -10,7 +10,6 @@ from src.api.routers import (
 from src.core.config import STOP_EVENT
 
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
