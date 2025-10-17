@@ -83,6 +83,7 @@ def build_dataset_from_db(
 def split_dataset(dataset: pd.DataFrame, split_method: str, test_set_values: list[str]):
     """划分数据["按年份划分", "按站点划分"], 返回train_dataset, test_dataset"""
     if split_method == "按年份划分":
+        test_set_values = [int(year) for year in test_set_values]
         train_dataset = dataset[~dataset["year"].isin(test_set_values)]
         test_dataset = dataset[dataset["year"].isin(test_set_values)]
     elif split_method == "按站点划分":
