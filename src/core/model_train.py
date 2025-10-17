@@ -39,7 +39,7 @@ def get_terrain_feature(dem_ds: xr.Dataset, lat: str, lon: str) -> tuple:
 def build_dataset_from_db(
         db: Session, dem_file: str, lags_config: dict, element: str, 
         start_year: str, end_year: str, season: str
-    ):
+):
     """指定要素, 起止年份, 季节构建数据集"""
     # 读取地形数据
     dem_ds = xr.open_dataset(dem_file)
@@ -83,8 +83,8 @@ def build_dataset_from_db(
 def split_dataset(dataset: pd.DataFrame, split_method: str, test_set_values: list[str]):
     """划分数据["按年份划分", "按站点划分"], 返回train_dataset, test_dataset"""
     if split_method == "按年份划分":
-        train_dataset = dataset[~dataset["年"].isin(test_set_values)]
-        test_dataset = dataset[dataset["年"].isin(test_set_values)]
+        train_dataset = dataset[~dataset["year"].isin(test_set_values)]
+        test_dataset = dataset[dataset["year"].isin(test_set_values)]
     elif split_method == "按站点划分":
         train_dataset = dataset[~dataset["station_name"].isin(test_set_values)]
         test_dataset = dataset[dataset["station_name"].isin(test_set_values)]
@@ -173,7 +173,7 @@ def train_model(
 def evaluate_model(
         model_name: str, test_dataset: pd.DataFrame,element: str, 
         start_year: str, end_year: str, season: str
-    ):
+):
     """评估模型"""
     # 加载模型
     model = load_model(model_name, element, start_year, end_year, season)

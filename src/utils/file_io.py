@@ -119,7 +119,7 @@ def safe_open_mfdataset(grid_files, **kwargs):
 def save_model(
         model: object, model_name: str, element: str, start_year: str, 
         end_year: str, season: str, task_id: str
-    ):
+):
     """保存模型"""
     model_name = model_name.lower()
     checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
@@ -137,7 +137,7 @@ def load_model(model_path):
 def save_losses(
         train_losses: list, test_losses: list, model_name: str, element: str,
         start_year: str, end_year: str, season: str, task_id: str
-    ):
+):
     """保存训练和测试损失"""
     model_name = model_name.lower()
     losses_df = pd.DataFrame({
@@ -155,7 +155,7 @@ def save_losses(
 def save_metrics_in_testset_all(
         metrics_true: dict, metrics_pred: dict, model_name: str, element: str,
         start_year: str, end_year: str, season: str, task_id: str
-    ):
+):
     """保存测试集的整体指标(所有站点均值)"""
     model_name = model_name.lower()
     metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name, "overall")
@@ -172,7 +172,7 @@ def save_metrics_in_testset_all(
 def save_metrics_in_testset_station(
         metrics_df: pd.DataFrame, model_name: str, element: str,
         start_year: str, end_year: str, season: str
-    ):
+):
     """保存测试集的站点指标(每个站点的均值)"""
     model_name = model_name.lower()
     metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name, "station")
@@ -185,7 +185,7 @@ def save_metrics_in_testset_station(
 def save_feature_importance(
         feature_importance: dict, model_name: str, element: str,
         start_year: str, end_year: str, season: str
-    ):
+):
     """保存特征重要性"""
     model_name = model_name.lower()
     importance_dir = os.path.join(settings.FEATURE_IMPORTANCE_OUTPUT_DIR, model_name)
@@ -199,7 +199,7 @@ def save_feature_importance(
 def save_true_pred(
         result_df: pd.DataFrame, model_name: str, element: str,
         start_year: str, end_year: str, season: str
-    ):
+):
     """保存站点数据、格点数据、预测数据"""
     model_name = model_name.lower()
     result_dir = os.path.join(settings.PRED_TRUE_OUTPUT_DIR, model_name)
