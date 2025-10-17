@@ -73,7 +73,6 @@ def train(task_id: str, request: ModelTrainRequest):
                     request.model, element, request.start_year, request.end_year, request.season, 
                     request.early_stopping_rounds, train_dataset, test_dataset
                 )
-                rmse = metrics_pred["RMSE"]
                 print(f"|--> [Task ID: {activate_subtask_id}] {element} 模型训练完成, 已耗时: {time() - start_time:.2f}秒")
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 90.0, f"{element} 模型训练已完成")
                 # 更新任务状态: 正在保存模型、训练损失以及整体指标
