@@ -59,12 +59,14 @@ def build_dataset_from_db(
     for station_id, station_df in station_dfs:
         print(f"构建数据集... 当前处理站点: {station_id}")
         station_df = station_df.sort_values(by=['year', 'month', 'day', 'hour']).reset_index(drop=True)
+
         # 添加滞后特征
         for lag in lags:
-            station_df[f"{element_db_column}_grid_lag_{lag}"] = station_df[f"{element_db_column}_grid"].shift(lag)
+            station_df[f"{element_db_column}_grid_lag_{lag}h"] = station_df[f"{element_db_column}_grid"].shift(lag)
         station_df.dropna(inplace=True)
         if station_df.empty:
             continue
+
         # 添加地形特征
         lat, lon = station_df.iloc[0]['lat'], station_df.iloc[0]['lon']
         elevation, slope, aspect = get_terrain_feature(dem_ds, lat, lon)
@@ -273,11 +275,12 @@ if __name__ == "__main__":
     split_method = "按站点划分"
     test_set_values = ["老河口", "武穴", "竹山", "神农架", "阳新"]
 
-
     dataset = build_dataset_from_db(db, settings.DEM_DATA_PATH, settings.LAGS_CONFIG, element, start_year, end_year, season)
     train_dataset, test_dataset = split_dataset(dataset, split_method, test_set_values)
-    train_model(
-        model_name, element, start_year, end_year, season, settings.EARLY_STOPING_ROUNDS, train_dataset, test_dataset
-    )
+    train_X = train_dataset.drop(columns=['station_id', 'station_name', 'season', 'wind_speed_2min'])
+    print(train_X.columns)
+    # train_model(
+    #     model_name, element, start_year, end_year, season, settings.EARLY_STOPING_ROUNDS, train_dataset, test_dataset
+    # )
     
-    evaluate_model(model_name, test_dataset, element, start_year, end_year, season)
+    # evaluate_model(model_name, test_dataset, element, start_year, end_year, season)

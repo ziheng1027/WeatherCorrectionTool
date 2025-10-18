@@ -5,8 +5,9 @@ import json
 import joblib
 import xarray as xr
 import pandas as pd
+from typing import List, Dict
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from ..core.config import settings
 from ..core.data_mapping import ELEMENT_TO_NC_MAPPING
@@ -208,3 +209,76 @@ def save_true_pred(
     result_path = os.path.join(result_dir, result_file_name)
     result_df.to_csv(result_path, index=False)
     print(f"站点数据、格点数据、预测数据已保存到: {result_path}\n")
+
+def get_grid_files_for_season(grid_data_dir: str, nc_var: str, start_year: str, end_year: str, season: str) -> List[Path]:
+    """根据年份范围和季节筛选出所有需要处理的格点文件"""
+    print(f"|--> 开始搜索文件, 年份: {start_year}-{end_year}, 季节: {season} ...")
+    all_files = []
+    season_months = {
+        "春季": [3, 4, 5],
+        "夏季": [6, 7, 8],
+        "秋季": [9, 10, 11],
+        "冬季": [12, 1, 2]
+    }
+    for year in range(int(start_year), int(end_year) + 1):
+        year_dir = Path(grid_data_dir) / f"{nc_var}.hourly" / str(year)
+        if not year_dir.exists():
+            print(f"|--> {year_dir} 目录不存在, 跳过")
+            continue
+        files_in_year = list(year_dir.glob("*.nc"))
+
+        # 筛选出属于当前季节的文件
+        if season == "全年":
+            all_files.extend(files_in_year)
+        else:
+            months = season_months[season]
+            for file in files_in_year:
+                try:
+                    timestamp = file.stem.split(".")[1]
+                    month = int(timestamp[4:6])
+                    if month in months:
+                        all_files.append(file)
+                except:
+                    print(f"|--> {file} 文件名不符合规范, 跳过")
+                    continue
+    # 按照时间顺序排序
+    all_files.sort()
+    print(f"|--> 共找到 {len(all_files)} 个文件")
+    return all_files
+
+def create_file_packages(file_list: List[Path], element: str, lags_config: dict) -> List[Dict]:
+    """为每个待处理的文件创建包含滞后项文件路径的文件包"""
+    print("|--> 开始创建滞后项所需要的文件包 ...")
+    file_packages = []
+    
+    # 获取当前要素需要的滞后小时数
+    lags = lags_config[element]
+    if not lags:
+        print(f"|--> 警告: 当前要素 {element} 没有在 lags_config 中配置滞后项")
+    for file_path in file_list:
+        try:
+            # 从文件名解析当前时间戳
+            timestamp = file_path.stem.split(".")[1]
+            current_timestamp = datetime.strptime(timestamp, "%Y%m%d%H")
+            
+            lag_files = {}
+            for lag in lags:
+                lag_key = f"lag_{lag}h"
+                lag_timestamp = current_timestamp - timedelta(hours=lag)
+                try:
+                    lag_file_path = find_nc_file_for_timestamp(element, lag_timestamp)
+                    lag_files[lag_key] = lag_file_path
+                except FileNotFoundError:
+                    lag_files[lag_key] = None
+            
+            file_package = {
+                "current_file": file_path,
+                "lag_files": lag_files,
+                "timestamp": current_timestamp
+            }
+            file_packages.append(file_package)
+        except (IndexError, ValueError):
+            print(f"|--> 警告: {file_path} 文件名解析失败(不符合CARAS.2020010100.element.hourly.nc格式), 跳过")
+            continue
+    print(f"|--> 文件包创建完成, 共 {len(file_packages)} 个文件包")
+    return file_packages
