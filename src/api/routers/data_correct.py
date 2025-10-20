@@ -42,6 +42,33 @@ def start_data_correct(
     return schemas.TaskCreationResponse(message="数据订正任务已启动", task_id=parent_task_id)
 
 
+@router.get("/global/processing-parent", summary="【全局】获取所有处理中的父任务")
+def get_all_processing_parent_files(db: Session = Depends(get_db)):
+    """
+    查询历史上所有处理中的父任务。
+    """
+    task_params = crud.get_global_task_by_status(db, task_type="DataCorrect", status="PROCESSING")
+    return task_params
+
+
+@router.get("/global/completed-parent", summary="【全局】获取所有已完成的父任务")
+def get_all_completed_parent_files(db: Session = Depends(get_db)):
+    """
+    查询历史上所有成功的父任务。
+    """
+    task_params = crud.get_global_task_by_status(db, task_type="DataCorrect", status="COMPLETED")
+    return task_params
+
+
+@router.get("/global/failed-parent", summary="【全局】获取所有失败的父任务")
+def get_all_failed_parent_files(db: Session = Depends(get_db)):
+    """
+    查询历史上所有失败的父任务。
+    """
+    task_params = crud.get_global_task_by_status(db, task_type="DataCorrect", status="FAILED")
+    return task_params
+
+
 @router.get("/global/pending", summary="【全局】获取所有待处理的任务列表")
 def get_all_pending_files(db: Session = Depends(get_db)):
     """
