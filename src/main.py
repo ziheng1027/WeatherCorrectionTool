@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from src.api.routers import (
     config_manage, task_operate, data_import, data_preview, 
-    data_process, model_train
+    data_process, model_train, data_correct
 )
 from src.core.config import STOP_EVENT
 
@@ -55,3 +55,4 @@ app.include_router(data_import.router)
 app.include_router(data_preview.router)
 app.include_router(data_process.router)
 app.include_router(model_train.router)
+app.include_router(data_correct.router)

@@ -4,7 +4,7 @@ import pandas as pd
 import xarray as xr
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, Optional
 from ..core.config import settings
 from ..core.data_mapping import ELEMENT_TO_NC_MAPPING, NC_TO_DB_MAPPING
 from ..utils.file_io import get_grid_files_for_season, create_file_packages
@@ -47,7 +47,7 @@ def build_feature_for_block(
                 print(f"|--> 警告: 读取滞后文件 {lag_file} 失败: {e}. 使用NaN填充")
                 grid_block_df[db_lag_key] = np.nan
         else:
-            print(f"|--> 警告: 滞后文件 {lag_file} 不存在. 使用NaN填充")
+            # print(f"|--> 警告: 滞后文件 {lag_file} 不存在. 使用NaN填充")
             grid_block_df[db_lag_key] = np.nan
         
     # 添加地形特征
@@ -83,6 +83,6 @@ if __name__ == '__main__':
     dem_ds = xr.open_dataset(settings.DEM_DATA_PATH)
     grid_block_ds = grid_ds["wind_velocity"][0: 100, 0:100]
     feature_df = build_feature_for_block(grid_block_ds, dem_ds, lag_files, "2分钟平均风速", timestamp)
-#     print(feature_df.head(24).iloc[:, :10])
-#     print(feature_df.shape)
-#     print(feature_df.columns)
+    print(feature_df.head(24).iloc[:, :10])
+    print(feature_df.shape)
+    print(feature_df.columns)

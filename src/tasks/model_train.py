@@ -51,6 +51,7 @@ def train(task_id: str, request: ModelTrainRequest):
                 activate_subtask_id = sub_task.task_id
                 element = sub_task.get_params()["element"]
                 print(f"|--> [Task ID: {task_id}] 正在训练 {element} 模型...")
+                
                 # 更新任务状态: 正在构建数据集
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 5.0, "正在构建数据集...")
                 dataset = build_dataset_from_db(
@@ -61,11 +62,13 @@ def train(task_id: str, request: ModelTrainRequest):
                     raise Exception("数据集为空, 请检查是否完成了数据处理步骤并导入数据库/时间范围是否符合数据处理步骤设置的起止时间范围。")
                 print(f"|--> [Task ID: {activate_subtask_id}] 数据集构建完成, 已耗时: {time() - start_time:.2f}秒, 数据集形状: {dataset.shape}")
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 25.0, "数据集构建已完成")
+                
                 # 更新任务状态: 正在划分数据集
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 30.0, "正在划分数据集...")
                 train_dataset, test_dataset = split_dataset(dataset, request.split_method, request.test_set_values)
                 print(f"|--> [Task ID: {activate_subtask_id}] 数据集划分完成, 已耗时: {time() - start_time:.2f}秒, 训练集形状: {train_dataset.shape}, 测试集形状: {test_dataset.shape}")
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 40.0, "数据集划分已完成")
+
                 # 更新任务状态: 正在训练模型
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 45.0, "正在训练模型...")
                 print(f"|--> [Task ID: {activate_subtask_id}] 正在训练 {element} 模型...")

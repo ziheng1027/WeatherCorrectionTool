@@ -190,3 +190,14 @@ class MetricsResponse(BaseModel):
     """用于返回模型整体评估指标的响应模型"""
     testset_true: MetricsDetail
     testset_pred: MetricsDetail
+
+
+class DataCorrectRequest(BaseModel):
+    """用于接收数据订正请求的请求体模型"""
+    model_path: FilePath = Field(..., description="模型文件路径")
+    element: AVAILABLE_ELEMENTS
+    start_year: str = Field(default="2008", description="起始年份", example=["2008", "2023"])
+    end_year: str = Field(default="2023", description="结束年份", example=["2008", "2023"])
+    season: str = Field(default="全年", description="季节")
+    block_size: int = Field(default=100, description="空间大小, 原图大小为460x800", example=100)
+    num_workers: int = Field(default=48, description="工作进程数")
