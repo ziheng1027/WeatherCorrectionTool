@@ -436,3 +436,4 @@ def get_proc_data_for_pivot(db: Session, element: str, station_name: str, start_
         {"station_name": station_name, "start_time": start_time, "end_time": end_time}
     )
     return pd.DataFrame(result.fetchall(), columns=["timestamp", db_column_name, grid_column_name])
+

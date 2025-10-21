@@ -227,8 +227,38 @@ class PivotProcessRequest(BaseModel):
     end_time: datetime
 
 
-class PivotProcessResponse(BaseModel):
+class PivotDataProcessResponse(BaseModel):
     """用于返回数据处理阶段的数据透视响应的响应模型"""
     timestamps: List[datetime]
     station_values: List[Optional[float]]
     grid_values: List[Optional[float]]
+
+
+class PivotModelTrainRequest(BaseModel):
+    """用于接收模型训练阶段的数据透视模型训练请求的请求体模型"""
+    model_names: List[str] = Field(..., description="需要评估的模型名称列表")
+    element: AVAILABLE_ELEMENTS
+    station_name: str = Field(..., description="站点名称", example="竹溪")
+    start_time: datetime
+    end_time: datetime
+
+
+class ModelPrediction(BaseModel):
+    """单个模型的预测值序列"""
+    model_name: str
+    pred_values: List[Optional[float]]
+
+
+class ModelMetrics(BaseModel):
+    """单个模型在特定站点的评估指标"""
+    model_name: str
+    metrics: MetricsDetail
+
+
+class PivotModelTrainResponse(BaseModel):
+    """用于返回模型评估透视结果的响应模型"""
+    timestamps: List[datetime]
+    station_values: List[Optional[float]]
+    grid_values: List[Optional[float]]
+    pred_values: List[ModelPrediction]
+    metrics: List[ModelMetrics]

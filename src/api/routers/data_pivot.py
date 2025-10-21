@@ -14,7 +14,7 @@ router = APIRouter(
 )
 
 
-@router.post("/processed-data", response_model=schemas.PivotProcessResponse, summary="获取预处理后的站点与格点对比数据")
+@router.post("/processed-data", response_model=schemas.PivotDataProcessResponse, summary="获取预处理后的站点与格点对比数据")
 def get_processed_pivot_data(request: schemas.PivotProcessRequest, db: Session = Depends(get_db)):
     """
     根据要素、站点和时间范围, 查询数据预处理后的站点观测值和对应的原始格点值, 用于绘制对比折线图。
@@ -43,7 +43,7 @@ def get_processed_pivot_data(request: schemas.PivotProcessRequest, db: Session =
             "grid_values": df[grid_col].tolist()
         }
 
-        return schemas.PivotProcessResponse(**response_data)
+        return schemas.PivotDataProcessResponse(**response_data)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
