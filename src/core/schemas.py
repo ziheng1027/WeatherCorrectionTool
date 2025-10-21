@@ -217,3 +217,18 @@ class DataCorrectRequest(BaseModel):
     season: str = Field(default="全年", description="季节")
     block_size: int = Field(default=100, description="空间大小, 原图大小为460x800", example=100)
     num_workers: int = Field(default=48, description="工作进程数")
+
+
+class PivotProcessRequest(BaseModel):
+    """用于接收数据处理阶段的数据透视请求的请求体模型"""
+    element: AVAILABLE_ELEMENTS
+    station_name: str = Field(..., description="站点名称", example="竹溪")
+    start_time: datetime
+    end_time: datetime
+
+
+class PivotProcessResponse(BaseModel):
+    """用于返回数据处理阶段的数据透视响应的响应模型"""
+    timestamps: List[datetime]
+    station_values: List[Optional[float]]
+    grid_values: List[Optional[float]]

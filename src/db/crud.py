@@ -410,3 +410,29 @@ def get_model_record_by_task_id(db: Session, task_id: str) -> Optional[db_models
 def get_all_model_records(db: Session) -> List[db_models.ModelRecord]:
     """获取所有已保存的模型记录"""
     return db.query(db_models.ModelRecord).order_by(db_models.ModelRecord.create_time.desc()).all()
+
+"""--------------------数据透视--------------------"""
+def get_proc_data_for_pivot(db: Session, element: str, station_name: str, start_time: datetime, end_time: datetime):
+    """查询指定要素、经纬度、时间范围内的站点观测值和格点值"""
+    db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
+    if not db_column_name:
+        raise ValueError(f"无效的要素名称: {element}")
+    grid_column_name = f"{db_column_name}_grid"
+
+    query = text(f"""
+        SELECT
+            timestamp,
+            {db_column_name},
+            {grid_column_name}
+        FROM proc_sg_data
+        WHERE
+            station_name = :station_name
+            AND timestamp >= :start_time
+            AND timestamp <= :end_time
+        ORDER BY timestamp
+    """)
+    result = db.execute(
+        query,
+        {"station_name": station_name, "start_time": start_time, "end_time": end_time}
+    )
+    return pd.DataFrame(result.fetchall(), columns=["timestamp", db_column_name, grid_column_name])
