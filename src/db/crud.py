@@ -10,6 +10,7 @@ from . import db_models
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
 
 
+"""--------------------创建/取消/更新任务--------------------"""
 def create_task(db: Session, task_id: str, task_name: str, task_type: str, params: dict, parent_task_id: str = None) -> db_models.TaskProgress:
     """
     创建一个任务(父任务/子任务 都可)。

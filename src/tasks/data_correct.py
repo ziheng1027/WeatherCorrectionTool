@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from ..db import crud
 from ..db.database import SessionLocal
-from ..core.config import settings
+from ..core.config import settings, STOP_EVENT
 from ..core.data_mapping import ELEMENT_TO_NC_MAPPING
 from ..core.data_correct import build_feature_for_block
 from ..utils.file_io import load_model, get_grid_files_for_season, create_file_packages
@@ -103,9 +103,13 @@ def correct_mp(
 ):
     """多进程订正数据[后台任务]"""
     db = SessionLocal()
+    cancel_request = False
+    executor = None
 
     try:
         crud.update_task_status(db, parent_task_id, "PROCESSING", 0, "任务初始化...")
+        # 清除旧的停止信号, 确保本次任务不受之前任务的影响
+        STOP_EVENT.clear()
         # 检测CPU核心数, 如果用户指定的工作进程数大于CPU核心数, 则使用CPU核心数
         cpu_count = os.cpu_count()
         num_workers = min(num_workers, cpu_count - 1) if cpu_count > 1 else 1
@@ -146,50 +150,69 @@ def correct_mp(
         crud.update_task_status(db, parent_task_id, "PROCESSING", 0, f"任务初始化完成, 准备处理 {total_files} 个文件")
 
         completed_files = 0
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            # 提交所有任务到进程池
-            futures = {
-                executor.submit(
-                    correct_single_file, model, dem_ds, file_package, element, 
-                    file_package["current_file"].parent.name, block_size, 
-                    sub_tasks[file_package["current_file"].name]
-                ): file_package for file_package in file_packages
-            }
-            print(f"|--> 主进程: 提交了 {len(futures)} 个订正任务到进程池")
+        executor = ProcessPoolExecutor(max_workers=num_workers)
 
-            # 处理已经完成的任务
-            for future in as_completed(futures):
-                file_package = futures[future]
-                original_file_name = file_package["current_file"].name
-                sub_task_id = sub_tasks[original_file_name]
-                try:
-                    result_path = future.result()
-                    if result_path:
-                        crud.update_task_status(db, sub_task_id, "COMPLETED", 100.0, f"当前文件订正完成: {result_path.name}")
-                        print(f"|--> [成功]: {original_file_name} -> {result_path}")
-                    else:
-                        crud.update_task_status(db, sub_task_id, "FAILED", 0.0, f"当前文件订正失败: {result_path.name}")
-                        print(f"|--> [失败]: {original_file_name}")
-                except Exception as e:
-                    crud.update_task_status(db, sub_task_id, "FAILED", 0.0, f"错误: {result_path.name}")
-                    print(f"|--> [错误]: 处理 {original_file_name} 时出错: {e}")
-                completed_files += 1
-                progress = (completed_files / total_files) * 100
-                progress_text = f"整体进度: {completed_files}/{total_files}"
-                crud.update_task_status(db, parent_task_id, "PROCESSING", progress, progress_text)
-                print(f"|--> 进度: {completed_files}/{total_files} ({progress:.2f}%)")
+        # 提交所有任务到进程池
+        futures = {
+            executor.submit(
+                correct_single_file, model, dem_ds, file_package, element, 
+                file_package["current_file"].parent.name, block_size, 
+                sub_tasks[file_package["current_file"].name]
+            ): file_package for file_package in file_packages
+        }
+        print(f"|--> 主进程: 提交了 {len(futures)} 个订正任务到进程池")
 
-        crud.update_task_status(db, parent_task_id, "COMPLETED", 100.0, "所有订正任务已完成")
+        # 处理已经完成的任务
+        for future in as_completed(futures):
+            if STOP_EVENT.is_set():
+                cancel_request = True
+                print(f"|--> 主进程: 收到停止信号, 开始终止任务")
+                break
+
+            file_package = futures[future]
+            original_file_name = file_package["current_file"].name
+            sub_task_id = sub_tasks[original_file_name]
+
+            try:
+                result_path = future.result()
+                if result_path:
+                    crud.update_task_status(db, sub_task_id, "COMPLETED", 100.0, f"当前文件订正完成: {result_path.name}")
+                    print(f"|--> [成功]: {original_file_name} -> {result_path}")
+                else:
+                    crud.update_task_status(db, sub_task_id, "FAILED", 0.0, f"当前文件订正失败: {result_path.name}")
+                    print(f"|--> [失败]: {original_file_name}")
+            except Exception as e:
+                crud.update_task_status(db, sub_task_id, "FAILED", 0.0, f"错误: {result_path.name}")
+                print(f"|--> [错误]: 处理 {original_file_name} 时出错: {e}")
+
+            completed_files += 1
+            progress = (completed_files / total_files) * 100
+            progress_text = f"整体进度: {completed_files}/{total_files}"
+            crud.update_task_status(db, parent_task_id, "PROCESSING", progress, progress_text)
+            print(f"|--> 进度: {completed_files}/{total_files} ({progress:.2f}%)")
+
+        if STOP_EVENT.is_set():
+            crud.update_task_status(db, parent_task_id, "FAILED", progress, "任务被用户手动停止")
+        else:
+            crud.update_task_status(db, parent_task_id, "COMPLETED", 100.0, "所有订正任务已完成")
         
     except Exception as e:
         error_msg = f"任务执行错误: {e}"
         print(f"|--> {error_msg}")
         crud.update_task_status(db, parent_task_id, "FAILED", 0.0, error_msg)
-        subtask_list = crud.get_subtasks_by_parent_id(db, parent_task_id)
-        for subtask in subtask_list:
-            if subtask.status in ["PENDING", "PROCESSING"]:
-                crud.update_task_status(db, subtask.id, "FAILED", 0.0, "父任务失败, 终止剩余子任务")
+        return
+    
     finally:
+        if executor:
+            print(f"|--> 主进程: 开始关闭进程池...")
+            executor.shutdown(wait=True, cancel_futures=True)
+            print(f"|--> 主进程: 进程池已关闭")
+        if cancel_request:
+            print(f"|--> 主进程: 正在更新任务 {parent_task_id} 以及剩余子任务的状态为 FAILED...")
+            crud.cancel_subtask(db, parent_task_id)
+            print(f"|--> 主进程: 任务 {parent_task_id} 以及剩余子任务的状态已更新为 FAILED")
+        elif crud.get_task_by_id(db, parent_task_id).status == "PROCESSING":
+            crud.update_task_status(db, parent_task_id, "COMPLETED", 100.0, "所有订正任务已完成")
         db.close()
 
 
