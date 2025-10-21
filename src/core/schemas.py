@@ -1,7 +1,7 @@
 # src/core/schemas.py
 
 from datetime import datetime
-from typing import Optional, Literal, List
+from typing import Optional, Literal, List, Dict
 from pydantic import BaseModel, DirectoryPath, FilePath, Field
 from .config import settings
 
@@ -190,6 +190,22 @@ class MetricsResponse(BaseModel):
     """用于返回模型整体评估指标的响应模型"""
     testset_true: MetricsDetail
     testset_pred: MetricsDetail
+
+
+class ModelRecordResponse(BaseModel):
+    """用于返回模型记录的响应模型"""
+    model_name: str
+    element: AVAILABLE_ELEMENTS
+    model_path: str
+    create_time: datetime
+    train_params: Dict
+    model_params: Dict
+
+
+class ModelListResponse(BaseModel):
+    """用于返回模型列表的响应模型"""
+    count: int
+    models: List[ModelRecordResponse]
 
 
 class DataCorrectRequest(BaseModel):

@@ -1,7 +1,7 @@
 # src/db/crud.py
 import pandas as pd
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import text, exists
 from sqlalchemy.orm import Session
 # 导入针对 SQLite 的特殊 insert 语句构造器
@@ -402,6 +402,11 @@ def create_model_record(db: Session, model_info: dict) -> db_models.ModelRecord:
     db.refresh(record)
     return record
 
+"""--------------------数据订正--------------------"""
 def get_model_record_by_task_id(db: Session, task_id: str) -> Optional[db_models.ModelRecord]:
     """根据task_id获取模型记录"""
     return db.query(db_models.ModelRecord).filter(db_models.ModelRecord.task_id == task_id).first()
+
+def get_all_model_records(db: Session) -> List[db_models.ModelRecord]:
+    """获取所有已保存的模型记录"""
+    return db.query(db_models.ModelRecord).order_by(db_models.ModelRecord.create_time.desc()).all()

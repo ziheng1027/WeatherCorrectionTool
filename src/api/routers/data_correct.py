@@ -14,6 +14,26 @@ router = APIRouter(
 )
 
 
+@router.get("/get-models", response_model=schemas.ModelListResponse, summary="获取所有已保存的模型")
+def get_models(db: Session = Depends(get_db)):
+    """从数据库中检索所有已训练并保存的模型记录供前端选择"""
+    model_records = crud.get_all_model_records(db)
+
+    response_models = []
+    for record in model_records:
+        response_models.append(
+            schemas.ModelRecordResponse(
+                element=record.element,
+                model_name=record.model_name,
+                model_path=record.model_path,
+                create_time=record.create_time,
+                train_params=record.get_train_params(),
+                model_params=record.get_model_params()
+            )
+        )
+    return schemas.ModelListResponse(count=len(response_models), models=response_models)
+
+
 @router.post("/start", response_model=schemas.TaskCreationResponse, summary="启动数据订正任务")
 def start_data_correct(
     request: schemas.DataCorrectRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)

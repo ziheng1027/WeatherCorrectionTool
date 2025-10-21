@@ -222,7 +222,7 @@ def save_model_record(task_id: str, db: Session = Depends(get_db)):
         "model_id": str(uuid.uuid4()),
         "model_name": checkpoint_name,
         "element": element,
-        "train_params": params.get("task_params", {}),
+        "train_params": params,
         "model_params": model_config,
         "model_path": checkpoint_path,
         "task_id": task_id
