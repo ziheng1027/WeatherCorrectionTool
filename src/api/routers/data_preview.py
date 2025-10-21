@@ -54,6 +54,7 @@ def get_station_data(request: schemas.StationPreviewRequest, db: Session = Depen
     }
     return response
 
+
 @router.post("/grid-data", response_model=schemas.GridPreviewResponse, summary="获取指定时刻的格点数据")
 def get_grid_data(request: schemas.GridDataRequest):
     """

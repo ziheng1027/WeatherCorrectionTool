@@ -37,8 +37,7 @@ def get_grid_data_at_time(element: str, timestamp: datetime):
         return lats, lons, values
     
 def get_grid_time_series_for_coord(
-        task_id: str, progress_tasks: Dict[str, Any],
-        progress_lock: Lock,
+        task_id: str, progress_tasks: Dict[str, Any], progress_lock: Lock,
         element: str, lat: float, lon: float, start_time: datetime, end_time: datetime
 ):
     """
