@@ -129,7 +129,6 @@ def get_global_filenames_by_status(db: Session, task_type: str, status: str) -> 
     
     注意：这个函数不区分父任务，会返回所有历史任务中符合条件的子任务。
     """
-    # 查询条件是正确的，符合你的“不按父任务ID查询”的需求
     tasks = db.query(db_models.TaskProgress).filter(
         db_models.TaskProgress.task_type == task_type,
         db_models.TaskProgress.status == status
