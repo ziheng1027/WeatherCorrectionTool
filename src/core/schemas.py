@@ -272,3 +272,27 @@ class PivotModelTrainStatusResponse(BaseModel):
     progress: float
     progress_text: str
     results: Optional[PivotModelTrainResponse] = None
+
+
+class PivotDataCorrectHeatmapResponse(BaseModel):
+    """用于返回数据订正阶段的格点热力图数据的响应模型"""
+    lats: List[float]
+    lons: List[float]
+    values_before: List[List[Optional[float]]]
+    values_after: List[List[Optional[float]]]
+
+
+class PivotDataCorrectTimeseriesResponse(BaseModel):
+    """用于返回数据订正阶段的格点时序数据的响应模型"""
+    timestamps: List[datetime]
+    values_before: List[Optional[float]]
+    values_after: List[Optional[float]]
+
+
+class PivotDataCorrectStatusResponse(BaseModel):
+    """用于返回数据订正-格点时序数据提取任务状态和结果的响应模型"""
+    task_id: str
+    status: str
+    progress: float
+    progress_text: str
+    results: Optional[PivotDataCorrectHeatmapResponse] = None

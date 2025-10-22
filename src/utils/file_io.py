@@ -282,3 +282,18 @@ def create_file_packages(file_list: List[Path], element: str, lags_config: dict)
             continue
     print(f"|--> 文件包创建完成, 共 {len(file_packages)} 个文件包")
     return file_packages
+
+def find_corrected_nc_file_for_timestamp(element: str, timestamp: datetime) -> Path:
+    """根据要素和时间戳找到对应的校正后的nc文件"""
+    nc_var = ELEMENT_TO_NC_MAPPING.get(element)
+    if not nc_var:
+        raise ValueError(f"无效的要素名称: {element}")
+    
+    # 构建文件路径
+    file_name = f"corrected.CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}.hourly.nc"
+    file_path = Path(settings.CORRECTION_OUTPUT_DIR) / f"{nc_var}.hourly" / str(timestamp.year) / file_name
+
+    # 检查文件是否存在
+    if not file_path.exists():
+        raise FileNotFoundError(f"订正后的格点文件 {file_path} 不存在, 请确认是否执行了该时段的订正")
+    return file_path

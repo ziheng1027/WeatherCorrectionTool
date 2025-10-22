@@ -64,17 +64,18 @@ def evaluate_model(task_id: str, element: str, station_name: str, start_time: da
             "pred_values": all_predictions,
             "metrics": all_metrics,
         }
-        # 保存到本地
-        # output_dir = Path("output/pivot_model_results")
-        # output_dir.mkdir(parents=True, exist_ok=True)
-        # output_path = output_dir / f"{task_id}.json"
-        # with open(output_path, "w", encoding="utf-8") as f:
-        #     json.dump(final_results, f, ensure_ascii=False, indent=4)
+        # 保存结果到本地, 以便api在任务完成后读取数据
+        output_dir = Path("output/pivot_model_results")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{element}_{station_name}_{task_id}.json"
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(final_results, f, ensure_ascii=False, indent=4)
 
         # 更新任务状态
         task = crud.get_task_by_id(db, task_id)
         if task:
             params = task.get_params()
+            params["result_path"] = str(output_path)
             task.set_params(params)
             db.add(task)
             crud.update_task_status(db, task_id, "COMPLETED", 100.0, "分析完成, 结果已保存")

@@ -9,6 +9,7 @@ from ...db import crud
 from ...db.database import get_db
 from ...core import schemas
 from ...core.data_mapping import ELEMENT_TO_DB_MAPPING
+from ...core.data_pivot import get_grid_data_for_heatmap
 from ...tasks.data_pivot import evaluate_model
 
 
@@ -133,3 +134,15 @@ def get_pivot_model_evaluate_status(task_id: str, db: Session = Depends(get_db))
             raise HTTPException(status_code=404, detail="任务结果文件已丢失")
 
     return response_data
+
+
+@router.post("/grid-data", response_model=schemas.PivotDataCorrectHeatmapResponse, summary="获取订正前后对比热力图数据")
+def get_pivot_grid_data(request: schemas.GridDataRequest):
+    """根据要素和时刻, 获取用于绘制订正前后对比热力图的格点数据"""
+    try:
+        data = get_grid_data_for_heatmap(request.element, request.timestamp)
+        return data
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"服务器内部错误: {e}")

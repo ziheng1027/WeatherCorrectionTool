@@ -11,7 +11,7 @@
 │   │   ├── data_process.py     # 数据处理模块api  
 │   │   ├── model_train.py      # 模型训练模块api  
 │   │   ├── data_correct.py     # 数据订正模块api  
-│   │   ├── data_pivot.py       # 数据透视模块api 
+│   │   ├── data_pivot.py       # 数据透视模块api  
 │   ├── core                    # 核心模块  
 │   │   ├── config.py           # 配置管理  
 │   │   ├── data_mapping.py     # 数据映射  

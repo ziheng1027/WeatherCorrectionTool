@@ -472,3 +472,4 @@ def get_proc_feature_for_pivot(db: Session, element: str, station_name: str, sta
         print(f"查询数据时出错: {e}")
         db.rollback()
         raise
+
