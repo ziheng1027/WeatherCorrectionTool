@@ -1,7 +1,9 @@
 # src/api/routers/data_pivot.py
+import os
 import json
 import uuid
 from pathlib import Path
+from threading import Lock
 from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
@@ -9,8 +11,14 @@ from ...db import crud
 from ...db.database import get_db
 from ...core import schemas
 from ...core.data_mapping import ELEMENT_TO_DB_MAPPING
-from ...core.data_pivot import get_grid_data_for_heatmap
+from ...core.data_pivot import get_grid_data_for_heatmap, get_correct_grid_time_series_for_coord
 from ...tasks.data_pivot import evaluate_model
+from ...utils.file_io import find_corrected_nc_file_for_timestamp
+
+
+# 为数据透视模块的即时查询任务创建一个独立的内存存储和锁
+PIVOT_PROGRESS_TASKS = {}
+pivot_progress_lock = Lock()
 
 
 router = APIRouter(
@@ -140,9 +148,91 @@ def get_pivot_model_evaluate_status(task_id: str, db: Session = Depends(get_db))
 def get_pivot_grid_data(request: schemas.GridDataRequest):
     """根据要素和时刻, 获取用于绘制订正前后对比热力图的格点数据"""
     try:
+        find_corrected_nc_file_for_timestamp(request.element, request.timestamp)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404, 
+            detail={
+                "message": f"指定时间范围: {request.start_time} -> {request.end_time} 的订正数据不完整或不存在。是否需要执行包含该时段的订正任务？",
+                "element": request.element,
+                "timestamp": request.timestamp.isoformat()
+            }
+        )
+    
+    try:
         data = get_grid_data_for_heatmap(request.element, request.timestamp)
         return data
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {e}")
+
+
+@router.post("/grid-data-timeseries", response_model=schemas.TaskCreationResponse, summary="启动订正前后对比曲线的数据提取任务")
+def create_correct_timeseries_task(request: schemas.GridTimeSeriesRequest, background_tasks: BackgroundTasks):
+    """启动一个提取订正前后对比曲线数据后台任务"""
+    try:
+        # 检查时间范围的起始和结束时刻是否存在订正文件
+        find_corrected_nc_file_for_timestamp(request.element, request.start_time)
+        find_corrected_nc_file_for_timestamp(request.element, request.end_time)
+    except FileNotFoundError:
+        # 简单地提示时间范围内数据不完整
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": f"指定时间范围: {request.start_time} -> {request.end_time} 的订正数据不完整或不存在。请确认是否执行了包含该时段的订正任务？",
+                "element": request.element,
+                "start_time": request.start_time.isoformat(),
+                "end_time": request.end_time.isoformat()
+            }
+        )
+
+    task_id = str(uuid.uuid4())
+    
+    with pivot_progress_lock:
+        # 清理旧的已完成任务, 防止内存增长
+        for old_task_id, task_details in list(PIVOT_PROGRESS_TASKS.items()):
+            if task_details["status"] in ["COMPLETED", "FAILED"]:
+                del PIVOT_PROGRESS_TASKS[old_task_id]
+
+        PIVOT_PROGRESS_TASKS[task_id] = {
+            "status": "PENDING",
+            "progress": 0.0,
+            "progress_text": "任务已提交, 等待执行...",
+            "result": None,
+            "error": None
+        }
+
+    background_tasks.add_task(
+        get_correct_grid_time_series_for_coord,
+        task_id=task_id,
+        progress_tasks=PIVOT_PROGRESS_TASKS,
+        progress_lock=pivot_progress_lock,
+        element=request.element,
+        lat=request.lat,
+        lon=request.lon,
+        start_time=request.start_time,
+        end_time=request.end_time
+    )
+    return {"message": "数据透视-订正前后对比曲线数据提取任务已启动", "task_id": task_id}
+
+
+@router.get("/grid-data-timeseries/status/{task_id}", response_model=schemas.PivotDataCorrectStatusResponse, summary="查询订正前后对比曲线任务状态")
+def get_correct_timeseries_status(task_id: str):
+    """查询提取订正前后对比曲线数据任务的状态和结果"""
+    with pivot_progress_lock:
+        task = PIVOT_PROGRESS_TASKS.get(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务ID不存在")
+
+        # 构造响应
+        response_data = {
+            "task_id": task_id,
+            "status": task["status"],
+            "progress": task["progress"],
+            "progress_text": task.get("progress_text", ""), # 兼容旧任务
+            "results": task["result"],
+            "error": task["error"]
+        }
+
+    return response_data

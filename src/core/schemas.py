@@ -295,4 +295,4 @@ class PivotDataCorrectStatusResponse(BaseModel):
     status: str
     progress: float
     progress_text: str
-    results: Optional[PivotDataCorrectHeatmapResponse] = None
+    results: Optional[PivotDataCorrectTimeseriesResponse] = None
