@@ -7,7 +7,7 @@ from .data_mapping import ELEMENT_TO_DB_MAPPING
 from .model_train import get_terrain_feature
 
 
-def bulid_feature_for_pivot(df: pd.DataFrame, element: str) -> pd.DataFrame:
+def bulid_feature_for_pivot(df: pd.DataFrame, element: str):
     """为数据透视的模型评估构建用于模型预测的特征"""
     if df.empty:
         return df
@@ -36,7 +36,8 @@ def bulid_feature_for_pivot(df: pd.DataFrame, element: str) -> pd.DataFrame:
     lag_columns = [f"{grid_col}_lag_{lag}h" for lag in lags]
     terrain_columns = ["elevation", "slope", "aspect"]
     feature_columns = base_columns + grid_columns + lag_columns + terrain_columns
-    df = df[feature_columns]
+    df_X = df[feature_columns]
+    df_y = df[element_db_column]
 
-    return df
+    return df_X, df_y
 

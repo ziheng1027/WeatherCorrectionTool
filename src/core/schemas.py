@@ -1,7 +1,7 @@
 # src/core/schemas.py
 
 from datetime import datetime
-from typing import Optional, Literal, List, Dict
+from typing import Optional, Literal, List, Dict, Any
 from pydantic import BaseModel, DirectoryPath, FilePath, Field
 from .config import settings
 
@@ -219,7 +219,7 @@ class DataCorrectRequest(BaseModel):
     num_workers: int = Field(default=48, description="工作进程数")
 
 
-class PivotProcessRequest(BaseModel):
+class PivotDataProcessRequest(BaseModel):
     """用于接收数据处理阶段的数据透视请求的请求体模型"""
     element: AVAILABLE_ELEMENTS
     station_name: str = Field(..., description="站点名称", example="竹溪")
@@ -236,7 +236,7 @@ class PivotDataProcessResponse(BaseModel):
 
 class PivotModelTrainRequest(BaseModel):
     """用于接收模型训练阶段的数据透视模型训练请求的请求体模型"""
-    model_names: List[str] = Field(..., description="需要评估的模型名称列表")
+    model_paths: List[FilePath] = Field(..., description="一个或多个模型文件的路径列表")
     element: AVAILABLE_ELEMENTS
     station_name: str = Field(..., description="站点名称", example="竹溪")
     start_time: datetime
@@ -251,8 +251,9 @@ class ModelPrediction(BaseModel):
 
 class ModelMetrics(BaseModel):
     """单个模型在特定站点的评估指标"""
+    station_name: str
     model_name: str
-    metrics: MetricsDetail
+    metrics: Dict[str, Any]
 
 
 class PivotModelTrainResponse(BaseModel):
@@ -262,3 +263,12 @@ class PivotModelTrainResponse(BaseModel):
     grid_values: List[Optional[float]]
     pred_values: List[ModelPrediction]
     metrics: List[ModelMetrics]
+
+
+class PivotModelTrainStatusResponse(BaseModel):
+    """用于返回模型透视分析任务状态和结果的响应模型"""
+    task_id: str
+    status: str
+    progress: float
+    progress_text: str
+    results: Optional[PivotModelTrainResponse] = None
