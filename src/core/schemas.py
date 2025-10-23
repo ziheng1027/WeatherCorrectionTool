@@ -296,3 +296,19 @@ class PivotDataCorrectStatusResponse(BaseModel):
     progress: float
     progress_text: str
     results: Optional[PivotDataCorrectTimeseriesResponse] = None
+
+
+class DataExportRequest(BaseModel):
+    """用于接收数据导出请求的请求体模型"""
+    element: AVAILABLE_ELEMENTS
+    start_time: datetime
+    end_time: datetime
+
+
+class DataExportStatusResponse(BaseModel):
+    """用于返回数据导出任务状态的响应模型"""
+    task_id: str
+    status: str
+    progress: float
+    progress_text: str
+    download_url: Optional[str] = None # 任务完成后, 这里会提供下载链接
