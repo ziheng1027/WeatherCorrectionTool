@@ -107,7 +107,7 @@ def correct_mp(
     executor = None
 
     try:
-        crud.update_task_status(db, parent_task_id, "PROCESSING", 0, "任务初始化...")
+        crud.update_task_status(db, parent_task_id, "PROCESSING", 0, "正在初始化任务...")
         # 清除旧的停止信号, 确保本次任务不受之前任务的影响
         STOP_EVENT.clear()
         # 检测CPU核心数, 如果用户指定的工作进程数大于CPU核心数, 则使用CPU核心数
@@ -116,10 +116,13 @@ def correct_mp(
         print(f"|--> 主进程: 检测到 CPU 核心数: {cpu_count}, 将使用 {num_workers} 个工作进程")
 
         # 主进程中加载共享资源(模型和dem文件)
+        crud.update_task_status(db, parent_task_id, "PROCESSING", 1, "正在加载模型、地形资源...")
         model = load_model(model_path)
         dem_ds = xr.open_dataset(settings.DEM_DATA_PATH)
+        crud.update_task_status(db, parent_task_id, "PROCESSING", 2, "模型、地形资源加载完成")
 
         # 准备需要的文件列表
+        crud.update_task_status(db, parent_task_id, "PROCESSING", 3, "正在准备文件列表...")
         nc_var = ELEMENT_TO_NC_MAPPING[element]
         if not nc_var:
             raise ValueError(f"无效的要素: {element}")
@@ -131,6 +134,7 @@ def correct_mp(
         file_packages = create_file_packages(grid_files, element, settings.LAGS_CONFIG)
         if not file_packages:
             raise ValueError(f"没有找到滞后特征所需的文件: {element} {start_year} {end_year} {season}")
+        crud.update_task_status(db, parent_task_id, "PROCESSING", 4, f"文件列表准备完成, 共 {len(file_packages)} 个文件")
 
         # 创建并管理进程池
         total_files = len(file_packages)
@@ -147,7 +151,7 @@ def correct_mp(
             params = {"file_name": file_name, "timestamp": file_package["timestamp"].isoformat()}
             crud.create_task(db, sub_task_id, sub_task_name, "DataCorrect_SubTask", params, parent_task_id)
             sub_tasks[file_name] = sub_task_id
-        crud.update_task_status(db, parent_task_id, "PROCESSING", 0, f"任务初始化完成, 准备处理 {total_files} 个文件")
+        crud.update_task_status(db, parent_task_id, "PROCESSING", 5, f"子任务分配完成, 准备处理 {total_files} 个任务")
 
         completed_files = 0
         executor = ProcessPoolExecutor(max_workers=num_workers)
