@@ -52,7 +52,7 @@ def extract_grid_values_for_stations(ds, var_grid: str, station_coords: dict, ye
     df.drop(columns=["station", "lat", "lon"], inplace=True)
 
     # 北京时转换为世界时
-    if hasattr(settings, 'CST_YEARS') and year in settings.CST_YEARS:
+    if hasattr(settings, 'CST_YEARS') and int(year) in settings.CST_YEARS:
         df["time"] = cst_to_utc(df["time"])
     return df
 
