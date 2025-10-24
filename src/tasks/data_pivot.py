@@ -67,7 +67,7 @@ def evaluate_model(task_id: str, element: str, station_name: str, start_time: da
         # 保存结果到本地, 以便api在任务完成后读取数据
         output_dir = Path("output/pivot_model_results")
         output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"{element}_{station_name}_{task_id}.json"
+        output_path = output_dir / f"{element}_{station_name}.json"
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(final_results, f, ensure_ascii=False, indent=4)
 
