@@ -9,6 +9,7 @@ from ...core import schemas
 from ...core.config import settings
 from ...core.data_mapping import get_name_to_id_mapping
 from ...core.data_preview import get_grid_data_at_time, get_grid_time_series_for_coord
+from ...utils.file_io import find_nc_file_for_timestamp
 
 
 # 存储进度查询任务的状态
@@ -82,6 +83,34 @@ def submit_grid_time_series_task(request: schemas.GridTimeSeriesRequest, backgro
     提交一个后台任务来提取指定坐标和时间范围的格点数据时间序列。
     此接口会立即返回一个task_id, 前端需要使用此ID轮询状态接口。
     """
+    # 坐标范围验证
+    if not (28.899 <= request.lat <= 33.361 and 108.249 <= request.lon <= 116.251):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "请求的坐标超出有效范围",
+                "valid_lat_range": "28.90 - 33.36",
+                "valid_lon_range": "108.25 - 116.25",
+                "requested_lat": request.lat,
+                "requested_lon": request.lon
+            }
+        )
+    try:
+        # 检查时间范围的起始和结束时刻是否存在订正文件
+        find_nc_file_for_timestamp(request.element, request.start_time)
+        find_nc_file_for_timestamp(request.element, request.end_time)
+    except FileNotFoundError:
+        # 简单地提示时间范围内数据不完整
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": f"指定时间范围: {request.start_time} -> {request.end_time} 的格点数据不完整或不存在。请确认是否存在该时段的格点数据？",
+                "element": request.element,
+                "start_time": request.start_time.isoformat(),
+                "end_time": request.end_time.isoformat()
+            }
+        )
+
     task_id = str(uuid.uuid4())
     
     # 在任务开始前，在共享字典中为该任务创建一个占位符

@@ -177,6 +177,18 @@ def get_pivot_grid_data(request: schemas.GridDataRequest):
 @router.post("/grid-data-timeseries", response_model=schemas.TaskCreationResponse, summary="启动订正前后对比曲线的数据提取任务")
 def create_correct_timeseries_task(request: schemas.GridTimeSeriesRequest, background_tasks: BackgroundTasks):
     """启动一个提取订正前后对比曲线数据后台任务"""
+    # 坐标范围验证
+    if not (28.899 <= request.lat <= 33.361 and 108.249 <= request.lon <= 116.251):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "请求的坐标超出有效范围",
+                "valid_lat_range": "28.90 - 33.36",
+                "valid_lon_range": "108.25 - 116.25",
+                "requested_lat": request.lat,
+                "requested_lon": request.lon
+            }
+        )
     try:
         # 检查时间范围的起始和结束时刻是否存在订正文件
         find_corrected_nc_file_for_timestamp(request.element, request.start_time)
