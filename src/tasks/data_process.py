@@ -234,12 +234,18 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
 
         # 4. 将所有处理完成的临时文件导入数据库
         def import_progress_callback(current, total):
-            # 用于将importer的进度更新到数据库
-            import_progress = (current / total) * 100
-            update_task_status(db, import_subtask_id, "PROCESSING", import_progress, f"正在入库 {current}/{total} 年的数据...")
-            # 父任务的进度从80%提升到100%
-            overall_progress = 80 + (import_progress * 0.2)
-            update_task_status(db, task_id, "PROCESSING", overall_progress, f"正在导入数据({current}/{total})")
+            callback_db: Session = SessionLocal()
+            try:
+                # 用于将importer的进度更新到数据库
+                import_progress = (current / total) * 100
+                update_task_status(callback_db, import_subtask_id, "PROCESSING", import_progress, f"正在入库 {current}/{total} 年的数据...")
+                # 父任务的进度从80%提升到100%
+                overall_progress = 80 + (import_progress * 0.2)
+                update_task_status(callback_db, task_id, "PROCESSING", overall_progress, f"正在导入数据({current}/{total})")
+            except Exception as e:
+                print(f"|--> 主进程: 进度回调发生错误: {str(e)}")
+            finally:
+                callback_db.close()
 
         update_task_status(db, import_subtask_id, "PROCESSING", 0.0, "开始从临时文件加载数据...")
         import_stats = import_proc_data_from_temp_files(db, TEMP_DATA_DIR, progress_callback=import_progress_callback)
