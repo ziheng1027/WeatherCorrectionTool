@@ -178,6 +178,14 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
                     parent_task_id=task_id 
                 )
                 sub_tasks_info.append({"sub_task_id": sub_task_id, "element": element, "year": str(year)})
+        # 创建数据导入子任务
+        import_subtask_id = str(uuid.uuid4())
+        import_subtask_name = "导入处理后的数据"
+        create_task(
+            db, task_id=import_subtask_id, task_name="导入处理后的数据",
+            task_type="DataProcess_SubTask", params={"task_name": import_subtask_name},
+            parent_task_id=task_id 
+        )
         total_tasks = len(sub_tasks_info)
         update_task_status(db, task_id, "PROCESSING", 2.0, "子任务创建完成, 开始处理数据...")
         print(f"|--> 主进程: 已为任务 {task_id} 创建 {total_tasks} 个子任务, 准备开始处理数据...")
@@ -225,13 +233,6 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
             return
 
         # 4. 将所有处理完成的临时文件导入数据库
-        import_subtask_id = str(uuid.uuid4())
-        create_task(
-            db, task_id=import_subtask_id, task_name="导入处理后的数据",
-            task_type="DataProcess_SubTask", params={},
-            parent_task_id=task_id 
-        )
-        
         def import_progress_callback(current, total):
             # 用于将importer的进度更新到数据库
             import_progress = (current / total) * 100
