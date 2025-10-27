@@ -13,7 +13,7 @@ from ...db.database import get_db
 from ...core import schemas
 from ...core.data_mapping import ELEMENT_TO_DB_MAPPING
 from ...core.data_pivot import get_grid_data_for_heatmap, get_correct_grid_time_series_for_coord
-from ...tasks.data_pivot import evaluate_model, create_export_zip_task
+from ...tasks.data_pivot import evaluate_model, create_export_zip_task, create_export_images_task
 from ...utils.file_io import find_corrected_nc_file_for_timestamp
 
 
@@ -309,6 +309,59 @@ def export_corrected_data(
     return {"message": "数据导出任务已启动", "task_id": task_id}
 
 
+@router.post("/export-corrected-images", response_model=schemas.TaskCreationResponse, summary="启动订正数据(PNG)打包导出任务")
+def export_corrected_images(
+    request: schemas.DataExportRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    根据要素和时间范围, 启动一个后台任务, 将订正后的数据绘制为.png并压缩为.zip包。
+    """
+    # 验证逻辑与 .nc 导出相同
+    try:
+        find_corrected_nc_file_for_timestamp(request.element, request.start_time)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, 
+            detail={
+                "message": f"起始时间: {request.start_time} 的订正格点数据不存在, 无法生成图像",
+                "element": request.element,
+                "start_time": request.start_time.isoformat()
+            }
+        )
+    try:
+        find_corrected_nc_file_for_timestamp(request.element, request.end_time)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, 
+            detail={
+                "message": f"结束时间: {request.end_time} 的订正格点数据不存在, 无法生成图像",
+                "element": request.element,
+                "end_time": request.end_time.isoformat()
+            }
+        )
+    
+    task_id = str(uuid.uuid4())
+    task_name = f"数据导出(PNG)_{request.element}_{request.start_time.date()}_{request.end_time.date()}"
+    params = request.model_dump()
+
+    params["start_time"] = params.get("start_time").isoformat()
+    params["end_time"] = params.get("end_time").isoformat()
+
+    # 使用新的任务类型 "DataExport_Image"
+    crud.create_task(db, task_id, task_name, "DataExport_Image", params)
+
+    background_tasks.add_task(
+        create_export_images_task, # 调用新的任务函数
+        task_id=task_id,
+        element=request.element,
+        start_time=request.start_time,
+        end_time=request.end_time
+    )
+    return {"message": "数据导出(PNG)任务已启动", "task_id": task_id}
+
+
 @router.get("/export-corrected-data/status/{task_id}", response_model=schemas.DataExportStatusResponse, summary="查询订正数据导出任务状态")
 def get_export_status(task_id: str, db: Session = Depends(get_db)):
     """
@@ -317,6 +370,10 @@ def get_export_status(task_id: str, db: Session = Depends(get_db)):
     task = crud.get_task_by_id(db, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务ID不存在")
+    
+    # 检查任务类型是否为导出类型
+    if task.task_type not in ["DataExport_NC", "DataExport_Image", "DataExport"]: # 兼容旧的 "DataExport"
+        raise HTTPException(status_code=400, detail="任务ID非导出任务类型")
 
     response_data = {
         "task_id": task.task_id,
@@ -364,7 +421,10 @@ def download_export_file(task_id: str, background_tasks: BackgroundTasks, db: Se
         raise HTTPException(status_code=404, detail="任务结果文件已丢失")
 
     # 从任务参数中动态生成文件名, 增加可读性
-    file_name = f"corrected_data_{task.task_id[:8]}.zip"
+    if task.task_type == "DataExport_Image":
+        file_name = f"corrected_images_{task.task_id[:8]}.zip"
+    else: # 默认为 .nc 导出
+        file_name = f"corrected_nc_data_{task.task_id[:8]}.zip"
 
     background_tasks.add_task(cleanup_temp_file, zip_path)
     
