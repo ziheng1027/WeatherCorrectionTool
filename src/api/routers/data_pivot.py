@@ -159,7 +159,7 @@ def get_pivot_grid_data(request: schemas.GridDataRequest):
         raise HTTPException(
             status_code=404, 
             detail={
-                "message": f"指定时间范围: {request.start_time} -> {request.end_time} 的订正数据不完整或不存在。是否需要执行包含该时段的订正任务？",
+                "message": f"指定时间: {request.timestamp}的订正数据不存在。是否需要执行包含该时段的订正任务？",
                 "element": request.element,
                 "timestamp": request.timestamp.isoformat()
             }
@@ -265,6 +265,30 @@ def export_corrected_data(
     """
     根据要素和时间范围, 启动一个后台任务, 将订正后的.nc文件压缩为.zip包。
     """
+    # 检查起止日期的格点数据是否存在
+    try:
+        find_corrected_nc_file_for_timestamp(request.element, request.start_time)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, 
+            detail={
+                "message": f"起始时间: {request.start_time} 的订正格点数据不存在, 请确认当前指定时间是否存在订正格点数据",
+                "element": request.element,
+                "start_time": request.start_time.isoformat()
+            }
+        )
+    try:
+        find_corrected_nc_file_for_timestamp(request.element, request.end_time)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, 
+            detail={
+                "message": f"结束时间: {request.end_time} 的订正格点数据不存在, 请确认当前指定时间是否存在订正格点数据",
+                "element": request.element,
+                "end_time": request.end_time.isoformat()
+            }
+        )
+    
     task_id = str(uuid.uuid4())
     task_name = f"数据导出_{request.element}_{request.start_time.date()}_{request.end_time.date()}"
     params = request.model_dump()
