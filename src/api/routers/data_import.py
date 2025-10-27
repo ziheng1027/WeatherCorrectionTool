@@ -25,17 +25,6 @@ router = APIRouter(
 )
 
 
-@router.post("/clear-pending-import-tasks", response_model=MessageResponse, summary="清理待处理的导入子任务")
-def clear_pending_import_tasks(db: Session = Depends(get_db)):
-    """
-    在开始一次新的数据导入前，调用此接口来清理数据库中所有历史残留的、
-    状态为 "PENDING" 的数据导入子任务。
-    这可以防止前端在轮询进度时，获取到旧任务和新任务的混合列表。
-    """
-    deleted_count = crud.delete_pending_data_import_subtasks(db)
-    return {"message": f"成功清除了 {deleted_count} 个待处理的导入子任务。"}
-
-
 def run_station_data_import_wrapper(task_id: str, dir:str):
     """包装原始任务函数, 以确保在任务结束后能够安全地释放全局锁"""
     try:
@@ -68,6 +57,18 @@ def start_data_import(db: Session = Depends(get_db)):
                 status_code=409, # 409 Conflict表示请求与服务器当前状态冲突
                 detail=f"已有数据导入任务正在运行(任务ID:{TASK_STATE['task_id']}, 请等待其完成后再试)"
             )
+        
+        # 自动清理所有残留的 PENDING 导入子任务
+        try:
+            print("|--> 正在自动清理残留的 PENDING 导入子任务...")
+            deleted_count = crud.delete_pending_data_import_subtasks(db)
+            print(f"|--> 成功清除了 {deleted_count} 个残留任务。")
+        except Exception as e:
+            # 如果清理失败, 释放锁并抛出异常
+            TASK_STATE["is_running"] = False
+            TASK_STATE["task_id"] = None
+            raise HTTPException(status_code=500, detail=f"清理历史任务失败: {str(e)}")
+
         # 如果没有任务在运行, 则锁定状态, 开始任务
         config = load_config_json()
         task_id = str(uuid.uuid4())

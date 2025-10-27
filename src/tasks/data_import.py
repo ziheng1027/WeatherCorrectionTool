@@ -35,8 +35,35 @@ def run_station_data_import(task_id: str, dir: str):
             crud.update_task_status(db, task_id, "FAILED", 0.0, f"任务失败: 在指定目录{dir}下没有找到csv文件")
             return
         
-        # 为每个文件创建子任务
+        # 1. 获取历史上所有已完成的文件名
+        try:
+            completed_files_list, _, _ = crud.get_global_filenames_by_status(db, "DataImport_SubTask", "COMPLETED")
+            completed_files_set = set(completed_files_list)
+            print(f"|--> 数据库中检测到 {len(completed_files_set)} 个已完成的文件。")
+        except Exception as e:
+            print(f"|--> 警告：查询历史已完成文件失败: {e}。将全量导入。")
+            completed_files_set = set()
+        
+        # 2. 过滤文件并创建子任务
+        files_to_process = []
+        skipped_count = 0
         for file_path in csv_files:
+            if file_path.name in completed_files_set:
+                print(f"|--> 跳过已完成文件: {file_path.name}")
+                skipped_count += 1
+                continue
+            files_to_process.append(file_path)
+
+        if not files_to_process:
+            crud.update_task_status(db, task_id, "COMPLETED", 100.0, "所有文件均已在历史任务中导入。")
+            print(f"|--> 所有 {total_files} 个文件均已导入，任务完成。")
+            return
+
+        total_tasks_to_run = len(files_to_process)
+        print(f"|--> 本次任务需处理 {total_tasks_to_run} 个新文件 (已跳过 {skipped_count} 个)。")
+
+        # 3. 为需要处理的文件创建子任务
+        for file_path in files_to_process:
             sub_task_id = str(uuid.uuid4())
             sub_task_name = f"导入文件: {file_path.name}"
             sub_task = crud.create_task(
@@ -45,8 +72,11 @@ def run_station_data_import(task_id: str, dir: str):
                 parent_task_id=task_id 
             )
             sub_tasks.append(sub_task)
-        crud.update_task_status(db, task_id, "PROCESSING", 0.0, f"已创建{total_files}个文件导入子任务...")
-        print(f"|--> 已创建{total_files}个文件导入子任务...")
+        
+        # 更新父任务状态, 进度=已跳过/总数
+        initial_progress = (skipped_count / total_files) * 100
+        crud.update_task_status(db, task_id, "PROCESSING", initial_progress, f"已创建 {total_tasks_to_run} 个新文件导入子任务 (跳过 {skipped_count} 个)...")
+        print(f"|--> 已创建 {total_tasks_to_run} 个文件导入子任务...")
 
         # 循环处理每个文件(子任务)
         completed_count = 0
