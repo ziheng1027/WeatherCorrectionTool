@@ -212,7 +212,7 @@ def save_model_record(task_id: str, db: Session = Depends(get_db)):
     season = params.get("season")
     # 构建模型路径
     checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name.lower())
-    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_id={task_id}.ckpt"
+    checkpoint_name = f"{model_name.lower()}_{element}_{start_year}_{end_year}_{season}_id={task_id}.ckpt"
     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
     # 获取当前的模型参数
     model_config_path = get_model_config_path(model_name, element)
