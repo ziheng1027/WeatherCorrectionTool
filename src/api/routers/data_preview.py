@@ -39,8 +39,10 @@ def get_station_data(request: schemas.StationPreviewRequest, db: Session = Depen
     """
     根据站点名称、要素和时间范围, 查询对应的时序数据用于绘制折线图。
     """
+    station_mapping = get_name_to_id_mapping(settings.STATION_INFO_PATH)
     data = crud.get_raw_station_data(
         db,
+        name_to_id_mapping=station_mapping,
         station_name=request.station_name,
         element=request.element,
         start_time=request.start_time,

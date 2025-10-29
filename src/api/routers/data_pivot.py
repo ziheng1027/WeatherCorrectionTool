@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse
 from ...db import crud
 from ...db.database import get_db
 from ...core import schemas
-from ...core.data_mapping import ELEMENT_TO_DB_MAPPING
+from ...core.config import settings
+from ...core.data_mapping import ELEMENT_TO_DB_MAPPING, get_name_to_id_mapping
 from ...core.data_pivot import get_grid_data_for_heatmap, get_correct_grid_time_series_for_coord
 from ...tasks.data_pivot import evaluate_model, create_export_zip_task, create_export_images_task
 from ...utils.file_io import find_corrected_nc_file_for_timestamp
@@ -35,8 +36,10 @@ def get_processed_pivot_data(request: schemas.PivotDataProcessRequest, db: Sessi
     """
     try:
         # 调用CRUD函数查询数据
+        station_mapping = get_name_to_id_mapping(settings.STATION_INFO_PATH)
         df = crud.get_proc_data_for_pivot(
             db,
+            name_to_id_mapping=station_mapping,
             element=request.element,
             station_name=request.station_name,
             start_time=request.start_time,
@@ -80,7 +83,15 @@ def create_pivot_model_evaluate_task(
             task_id=processing_task_id
         )
     # 检查指定时间范围内是否有数据
-    df_base = crud.get_proc_feature_for_pivot(db, request.element, request.station_name, request.start_time, request.end_time)
+    station_mapping = get_name_to_id_mapping(settings.STATION_INFO_PATH)
+    df_base = crud.get_proc_feature_for_pivot(
+        db, 
+        station_mapping,
+        request.element, 
+        request.station_name, 
+        request.start_time, 
+        request.end_time
+    )
     if df_base.empty:
         raise HTTPException(status_code=404, detail="指定时间范围内没有数据")
     

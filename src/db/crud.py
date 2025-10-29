@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 # 导入针对 SQLite 的特殊 insert 语句构造器
 from sqlalchemy.dialects.sqlite import insert
 from . import db_models
+from ..core.config import settings
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
 
 
@@ -267,11 +268,12 @@ def upsert_proc_station_grid_data(db: Session, df_sg: pd.DataFrame):
         raise
 
 """--------------------数据预览--------------------"""
-def get_raw_station_data(db: Session, station_name: str, element: str, start_time: datetime, end_time: datetime):
+def get_raw_station_data(db: Session, name_to_id_mapping: pd.DataFrame, station_name: str, element: str, start_time: datetime, end_time: datetime):
     """
     查询指定站点、要素和时间范围的原始数据。
     """
     try:
+        station_id = name_to_id_mapping[station_name]["id"]
         db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
         if not db_column_name:
             raise ValueError(f"无效的要素名称: {element}")
@@ -286,7 +288,7 @@ def get_raw_station_data(db: Session, station_name: str, element: str, start_tim
                 {db_column_name} AS value
             FROM raw_s_data
             WHERE 
-                station_name = :station_name
+                station_id = :station_id
                 AND timestamp >= :start_time
                 AND timestamp <= :end_time
             ORDER BY timestamp
@@ -295,7 +297,7 @@ def get_raw_station_data(db: Session, station_name: str, element: str, start_tim
         result = db.execute(
             query,
             {
-                "station_name": station_name,
+                "station_id": station_id,
                 "start_time": start_time,
                 "end_time": end_time
             }
@@ -412,9 +414,10 @@ def get_all_model_records(db: Session) -> List[db_models.ModelRecord]:
     return db.query(db_models.ModelRecord).order_by(db_models.ModelRecord.create_time.desc()).all()
 
 """--------------------数据透视--------------------"""
-def get_proc_data_for_pivot(db: Session, element: str, station_name: str, start_time: datetime, end_time: datetime):
+def get_proc_data_for_pivot(db: Session, name_to_id_mapping: pd.DataFrame, element: str, station_name: str, start_time: datetime, end_time: datetime):
     """查询指定要素、站点、时间范围内的站点观测值和格点值"""
     try:
+        station_id = name_to_id_mapping[station_name]["id"]
         db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
         if not db_column_name:
             raise ValueError(f"无效的要素名称: {element}")
@@ -427,14 +430,14 @@ def get_proc_data_for_pivot(db: Session, element: str, station_name: str, start_
                 {grid_column_name}
             FROM proc_sg_data
             WHERE
-                station_name = :station_name
+                station_id = :station_id
                 AND timestamp >= :start_time
                 AND timestamp <= :end_time
             ORDER BY timestamp
         """)
         result = db.execute(
             query,
-            {"station_name": station_name, "start_time": start_time, "end_time": end_time}
+            {"station_id": station_id, "start_time": start_time, "end_time": end_time}
         )
         return pd.DataFrame(result.fetchall(), columns=["timestamp", db_column_name, grid_column_name])
     
@@ -443,9 +446,10 @@ def get_proc_data_for_pivot(db: Session, element: str, station_name: str, start_
         db.rollback()
         raise
 
-def get_proc_feature_for_pivot(db: Session, element: str, station_name: str, start_time: datetime, end_time: datetime):
+def get_proc_feature_for_pivot(db: Session, name_to_id_mapping: pd.DataFrame, element: str, station_name: str, start_time: datetime, end_time: datetime):
     """根据起止时间从数据库中获取指定要素、站点的数据用于构建特征"""
     try:
+        station_id = name_to_id_mapping[station_name]["id"]
         db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
         if not db_column_name:
             raise ValueError(f"无效的要素名称: {element}")
@@ -457,13 +461,13 @@ def get_proc_feature_for_pivot(db: Session, element: str, station_name: str, sta
                 station_id, station_name, timestamp, lat, lon, year, month, day, hour, {db_column_name}, {grid_column_name}
             FROM proc_sg_data
             WHERE
-                station_name = :station_name
+                station_id = :station_id
                 AND timestamp >= :start_time
                 AND timestamp <= :end_time
         """)
         result = db.execute(
             query,
-            {"station_name": station_name, "start_time": start_time, "end_time": end_time}
+            {"station_id": station_id, "start_time": start_time, "end_time": end_time}
         )
         df = pd.DataFrame(result.fetchall())
         return df
