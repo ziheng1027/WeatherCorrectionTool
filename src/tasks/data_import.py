@@ -145,7 +145,7 @@ def run_station_data_import(task_id: str, dir: str):
             # 更新父任务的总体进度
             overall_progress = (i + 1) / total_files * 100
             crud.update_task_status(db, task_id, "PROCESSING", overall_progress, f"正在处理 {file_path} ({i+1}/{total_files})")
-            print(f"|--> 正在处理 {file_path} ({i+1}/{total_files})")
+            print(f"|--> 处理完成 {file_path} ({i+1}/{total_files})")
 
         if completed_count == total_files:
             crud.update_task_status(db, task_id, "COMPLETED", 100.0, f"所有文件导入成功，共 {total_files} 个文件")
