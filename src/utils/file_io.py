@@ -37,7 +37,10 @@ def find_nc_file_for_timestamp(element: str, timestamp: datetime) -> Path:
         raise ValueError(f"无效的要素名称: {element}")
 
     # 构建文件路径: CARAS/tmp.hourly/2008/xxx.nc
-    file_name = f"CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}.hourly.nc"
+    if nc_var =="pre":
+        file_name = f"CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}cip.hourly.nc"
+    else:
+        file_name = f"CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}.hourly.nc"
     file_path = Path(settings.GRID_DATA_DIR) / f"{nc_var}.hourly" / str(timestamp.year) / file_name
 
     if not file_path.exists():
@@ -290,7 +293,10 @@ def find_corrected_nc_file_for_timestamp(element: str, timestamp: datetime) -> P
         raise ValueError(f"无效的要素名称: {element}")
     
     # 构建文件路径
-    file_name = f"corrected.CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}.hourly.nc"
+    if nc_var =="pre":
+        file_name = f"corrected.CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}cip.hourly.nc"
+    else:
+        file_name = f"corrected.CARAS.{timestamp.strftime('%Y%m%d%H')}.{nc_var}.hourly.nc"
     file_path = Path(settings.CORRECTION_OUTPUT_DIR) / f"{nc_var}.hourly" / str(timestamp.year) / file_name
 
     # 检查文件是否存在
