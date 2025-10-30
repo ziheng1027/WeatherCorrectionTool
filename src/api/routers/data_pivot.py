@@ -30,7 +30,7 @@ router = APIRouter(
 
 
 @router.post("/processed-data", response_model=schemas.PivotDataProcessResponse, summary="获取预处理后的站点与格点对比数据")
-def get_processed_pivot_data(request: schemas.PivotDataProcessRequest, db: Session = Depends(get_db)):
+def get_processed_data(request: schemas.PivotDataProcessRequest, db: Session = Depends(get_db)):
     """
     根据要素、站点和时间范围, 查询数据预处理后的站点观测值和对应的原始格点值, 用于绘制对比折线图。
     """
@@ -69,7 +69,7 @@ def get_processed_pivot_data(request: schemas.PivotDataProcessRequest, db: Sessi
 
 
 @router.post("/model-evaluation", response_model=schemas.TaskCreationResponse, summary="启动数据透视-模型评估任务")
-def create_pivot_model_evaluate_task(
+def create_model_evaluate_task(
     request: schemas.PivotModelTrainRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
@@ -122,7 +122,7 @@ def create_pivot_model_evaluate_task(
 
 
 @router.get("/model-evaluation/status/{task_id}", response_model=schemas.PivotModelTrainStatusResponse, summary="查询数据透视-模型评估任务状态")
-def get_pivot_model_evaluate_status(task_id: str, db: Session = Depends(get_db)):
+def get_model_evaluate_status(task_id: str, db: Session = Depends(get_db)):
     """
     查询模型透视分析任务的状态、进度和最终结果。
     
@@ -162,7 +162,7 @@ def get_pivot_model_evaluate_status(task_id: str, db: Session = Depends(get_db))
 
 
 @router.post("/grid-data", response_model=schemas.PivotDataCorrectHeatmapResponse, summary="获取订正前后对比热力图数据")
-def get_pivot_grid_data(request: schemas.GridDataRequest):
+def get_grid_data(request: schemas.GridDataRequest):
     """根据要素和时刻, 获取用于绘制订正前后对比热力图的格点数据"""
     try:
         find_corrected_nc_file_for_timestamp(request.element, request.timestamp)
