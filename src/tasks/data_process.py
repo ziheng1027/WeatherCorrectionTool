@@ -253,7 +253,7 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
                     print(f"|--> 主进程: 检测到关闭信号, 正在终止任务 {task_id}...")
                     pool.terminate()  # 立即终止所有工作进程
                     pool.join()  # 确保所有进程都已结束
-                    update_task_status(db, task_id, "FAILED", (completed_count / total_tasks) * 100, "任务被用户取消")
+                    update_task_status(db, task_id, "FAILED", (completed_count / total_tasks) * 80, "任务被用户取消")
                     canceled_count = cancel_subtask(db, task_id)
                     print(f"|--> 主进程: 任务 {task_id} 已取消, 取消了 {canceled_count} 个子任务")
                     return
@@ -261,7 +261,7 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
                 # 从数据库查询子任务状态来计算进度
                 sub_tasks_from_db = get_subtasks_by_parent_id(db, task_id)
                 completed_count = sum(1 for t in sub_tasks_from_db if t.status in ["COMPLETED", "FAILED"])
-                overall_progress = (completed_count / total_tasks) * 100
+                overall_progress = (completed_count / total_tasks) * 80
                 update_task_status(db, task_id, "PROCESSING", overall_progress, f"已完成 {completed_count}/{total_tasks + 1} 个子任务")
                 sleep(15)  # 每15秒检查一次进度
         
