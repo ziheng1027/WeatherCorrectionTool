@@ -75,7 +75,6 @@ def create_export_zip_task(task_id: str, element: str, start_time: datetime, end
     finally:
         db.close()
 
-
 def create_export_images_task(task_id: str, element: str, start_time: datetime, end_time: datetime):
     """
     [新任务] 查找订正后的.nc文件, 绘制成.png图像, 并压缩为.zip包。
