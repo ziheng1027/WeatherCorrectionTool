@@ -5,7 +5,7 @@
     "max_depth": 9,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
-    "reg_alpha": 3,
+    "lambda": 3,
     "eval_metric": "rmse",
     "tree_method": "hist"
 }
