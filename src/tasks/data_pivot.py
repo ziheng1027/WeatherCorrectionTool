@@ -11,7 +11,8 @@ from typing import List
 from datetime import datetime
 from ..db import crud
 from ..db.database import SessionLocal
-from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING
+from ..core.config import settings
+from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING, get_name_to_id_mapping
 from ..core.data_pivot import bulid_feature_for_pivot
 from ..utils.file_io import load_model, find_corrected_nc_file_for_timestamp
 from ..utils.metrics import cal_metrics
@@ -28,7 +29,8 @@ def evaluate_model(task_id: str, element: str, station_name: str, start_time: da
         # 任务初始化
         crud.update_task_status(db, task_id, "PROCESSING", 0.0, "任务初始化, 准备获取数据...")
         # 获取并准备用于预测的数据和特征
-        df_base = crud.get_proc_feature_for_pivot(db, element, station_name, start_time, end_time)
+        station_mapping = get_name_to_id_mapping(settings.STATION_INFO_PATH)
+        df_base = crud.get_proc_feature_for_pivot(db, station_mapping, element, station_name, start_time, end_time)
 
         if df_base.empty:
             crud.update_task_status(db, task_id, "FAILED", 0.0, "在指定条件下没有找到可供分析的数据")
