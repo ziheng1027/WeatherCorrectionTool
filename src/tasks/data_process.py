@@ -189,7 +189,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         del df_cleaned
         
         update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据处理完成, 共得到 {total_records_processed} 条记录, 已保存到临时文件: {output_file}")
-        print(f"|-- [Worker PID:{mp.current_process().pid}] {year} 年 {element} 数据处理完成, 共得到 {total_records_processed} 条记录, 耗时: {time.time() - start_time:.2f} 秒")
+        print(f"|-- [Worker PID:{mp.current_process().pid}] {year} 年 {element} 数据处理完成, 共得到 {total_records_processed} 条记录, 耗时: {time() - start_time:.2f} 秒")
 
     except Exception as e:
         # 捕获任何异常, 更新任务状态为失败"FAILED"
