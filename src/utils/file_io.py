@@ -75,13 +75,13 @@ def safe_open_mfdataset(grid_files, **kwargs):
             """在xarray打开每个文件时, 强制分配标准坐标"""
             return ds.assign_coords(lat=ref_lat, lon=ref_lon)
 
-        ds = xr.open_mfdataset(grid_files, preprocess=_preprocess, combine="by_coords", parallel=True, **kwargs)
+        ds = xr.open_mfdataset(grid_files, preprocess=_preprocess, combine="by_coords", **kwargs)
         print(f"|--> by_coords方案成功打开 {len(grid_files)} 个文件")
         return ds
     except Exception as e:
         print(f"打开文件时发生错误, 尝试使用'nested'合并: {e}")
         try:
-            ds = xr.open_mfdataset(grid_files, combine="nested", concat_dim="time", parallel=True, **kwargs)
+            ds = xr.open_mfdataset(grid_files, combine="nested", concat_dim="time", **kwargs)
             ds = ds.assign_coords(lat=ref_lat, lon=ref_lon)
             print(f"|--> nested方案成功打开 {len(grid_files)} 个文件")
             return ds
