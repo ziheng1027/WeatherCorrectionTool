@@ -2,6 +2,8 @@
 import os
 import uuid
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import multiprocessing as mp
 from time import time, sleep
 from pathlib import Path
@@ -19,7 +21,7 @@ from ..core.data_process import (
     clean_station_data, extract_grid_values_for_stations,
     merge_sg_df, import_proc_data_from_temp_files
 )
-from ..utils.file_io import get_grid_files, safe_open_mfdataset
+from ..utils.file_io import get_grid_files_for_month, safe_open_mfdataset
 
 
 TEMP_DATA_DIR = Path("output/temp_data")
@@ -50,11 +52,11 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         
         # 重复处理检查
         print(f"|---> 正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
-        update_task_status(db, subtask_id, "PROCESSING", 3.0, f"正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
+        update_task_status(db, subtask_id, "PROCESSING", 1.0, f"正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
         is_processed = check_existed_element_by_year(db, element, int(year))
         if is_processed:
             print(f"|---> 警告: {year} 年的 {element} 数据已存在于数据库中, 跳过处理")
-            update_task_status(db, subtask_id, "COMPLETED", 3.0, f"{year} 年的 {element} 数据已存在, 跳过处理")
+            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据已存在, 跳过处理")
             return
         else:
             print(f"|---> {year} 年的 {element} 数据未处理, 准备处理...")
@@ -64,7 +66,6 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             update_task_status(db, subtask_id, "PROCESSING", 5.0, f"正在读取 {year} 年的 {element} 站点数据...")
             db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
             df_itrator = get_raw_station_data_by_year(db, db_column_name, int(year), chunk_size=8760)
-            update_task_status(db, subtask_id, "PROCESSING", 8.0, f"已读取 {year} 年的 {element} 站点数据")
         except Exception as e:
             print(f"|---> 警告: 读取 {year} 年的 {element} 站点数据时发生错误: {e}")
             update_task_status(db, subtask_id, "FAILED", 5.0, f"读取 {year} 年的 {element} 站点数据时发生错误: {e}")
@@ -90,70 +91,106 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         df_cleaned = pd.concat(cleaned_chunks, ignore_index=True)
         # 将"station_value"列重命名为DB中的列名
         df_cleaned.rename(columns={"station_value": db_column_name}, inplace=True)
+        del cleaned_chunks
         update_task_status(db, subtask_id, "PROCESSING", 20.0, f"已清洗完成 {year} 年的 {element} 站点数据, 共 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
         print(f"耗时: {time() - start_time:.2f} 秒, 共处理 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
 
         # 3. 读取所有站点的经纬度表
-        update_task_status(db, subtask_id, "PROCESSING", 22.0, f"正在获取 {year} 年的 {element} 格点数据...")
+        update_task_status(db, subtask_id, "PROCESSING", 25.0, f"正在读取所有站点的经纬度坐标...")
         station_info = pd.read_csv(settings.STATION_INFO_PATH, encoding="gbk")
         station_coords = {}
         for _, row in station_info.iterrows():
             station_coords[row["区站号(数字)"]] = {"station_name": row["站名"], "lat": row["纬度"], "lon": row["经度"]}
 
-        # 4. 根据82个站点的经纬度坐标一次性提取格点值
-        update_task_status(db, subtask_id, "PROCESSING", 23.0, f"正在获取 {year} 年的 {element} 格点数据...")
+        # 4. 根据82个站点的经纬度坐标, 按月份一次性提取格点值
         start_time = time()
-        grid_files = get_grid_files(settings.GRID_DATA_DIR, ELEMENT_TO_NC_MAPPING.get(element), year)
-        update_task_status(db, subtask_id, "PROCESSING", 25.0, f"成功获取 {year} 年的 {element} 格点数据")
-        if not grid_files:
-            update_task_status(db, subtask_id, "FAILED", 23.0, f"在 {year} 年未找到有效的 {element} 格点数据")
-            print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 格点数据文件")
-            return
-        print(f"|--->({element}, {year}) 读取 {len(grid_files)} 个格点文件, 准备提取格点值...")
+        nc_var = ELEMENT_TO_NC_MAPPING.get(element)
+        parquet_writer = None
+        total_records_processed = 0
 
-        # 打开多个netCDF文件, 处理坐标非单调问题
-        try:
-            update_task_status(db, subtask_id, "PROCESSING", 27.0, f"正在合并打开 {year} 年的 {element} 格点数据...")
-            ds = safe_open_mfdataset(grid_files)
-            update_task_status(db, subtask_id, "PROCESSING", 30.0, f"已合并打开 {year} 年的 {element} 格点数据")
-        except Exception as e:
-            print(f"({element}, {year}年) 错误: 无法打开格点数据文件: {e}")
-            update_task_status(db, subtask_id, "FAILED", 27.0, f"打开格点数据文件失败: {e}")
-            return
+        for month in range(1, 13):
+            progress_month_start = 28.0 + (month -  1) * 6
+            update_task_status(db, subtask_id, "PROCESSING", progress_month_start, f"正在提取 {year} 年 {month:02d} 月格点数据...")
+            grid_files_month = get_grid_files_for_month(settings.GRID_DATA_DIR, nc_var, year, month)
+            if not grid_files_month:
+                print(f"|---> 警告: {year} 年 {month:02d} 月未找到 {element} 格点数据文件, 跳过")
+                continue
+            print(f"|--->({element}, {year}-{month:02d}) 读取 {len(grid_files_month)} 个格点文件")
 
-        try:
-            update_task_status(db, subtask_id, "PROCESSING", 35.0, f"正在提取 {year} 年的 {element} 格点数据...")
-            grid_df = extract_grid_values_for_stations(ds, ELEMENT_TO_NC_MAPPING.get(element), station_coords, year)
-            ds.close()
-            update_task_status(db, subtask_id, "PROCESSING", 65.0, f"格点数据提取完成, 已提取 {len(grid_df)} 条格点记录")
-            print(f"耗时: {time() - start_time:.2f} 秒, 共提取 {len(grid_df)} 条格点记录")
-        except Exception as e:
-            print(f"({element}, {year}年) 错误: 无法提取格点数据: {e}")
-            update_task_status(db, subtask_id, "FAILED", 35.0, f"提取格点数据失败: {e}")
-            return
-        
-        # 5. 合并站点数据和格点数据
-        try:
-            update_task_status(db, subtask_id, "PROCESSING", 70.0, f"开始合并站点数据和格点数据...")
-            print(f"|--->({element}, {year}) 开始合并站点数据和格点数据...")
-            start_time = time()
-            df_sg = merge_sg_df(df_cleaned, grid_df, element)
-            update_task_status(db, subtask_id, "PROCESSING", 90.0, f"站点数据和格点数据合并完成, 共得到 {len(df_sg)} 条记录")
-            print(f"耗时: {time() - start_time:.2f} 秒, 共合并得到 {len(df_sg)} 条记录")
-        except Exception as e:
-            print(f"|--->({element}, {year}) 错误: 站点数据和格点数据合并失败: {e}")
-            update_task_status(db, subtask_id, "FAILED", 70.0, f"站点数据和格点数据合并失败: {e}")
-            return
-        # 6. 将合并后的数据以parquet格式保存到临时目录
-        update_task_status(db, subtask_id, "PROCESSING", 95.0, f"开始将合并后的数据保存到临时文件...")
-        if not df_sg.empty:
-            print(f"|--->({element}, {year}) 将 {len(df_sg)} 条合并后的数据写入临时文件: {output_file}")
-            df_sg.to_parquet(output_file, index=False)
+            # 按月打开数据集(减轻I/O瓶颈)
+            try:
+                ds = safe_open_mfdataset(grid_files_month)
+                print(f"|--->({element}, {year}-{month:02d}) 成功打开 {len(grid_files_month)} 个格点文件")
+            except Exception as e:
+                print(f"|--->({element}, {year}-{month:02d}) 错误: 无法打开格点数据文件: {e}")
+                update_task_status(db, subtask_id, "FAILED", progress_month_start, f"打开{month:02d}月的格点数据文件失败: {e}")
+                if parquet_writer:
+                    parquet_writer.close()
+                return
+
+            # 按月提取格点值
+            try:
+                grid_df_month = extract_grid_values_for_stations(ds, nc_var, station_coords, year)
+                ds.close()
+            except Exception as e:
+                print(f"|--->({element}, {year}-{month:02d}) 错误: 无法提取格点数据: {e}")
+                update_task_status(db, subtask_id, "FAILED", progress_month_start, f"提取{month:02d}月的格点数据失败: {e}")
+                if parquet_writer:
+                    parquet_writer.close()
+                return
+
+            # 筛选当月站点数据
+            df_cleaned_month = df_cleaned[df_cleaned["month"] == month].copy()
+            if df_cleaned.month.empty:
+                print(f"|--->警告: ({element}, {year}-{month:02d}) 未找到有效的站点数据, 跳过")
+                continue
+
+            # 按月合并站点数据和格点数据
+            try:
+                df_sg_month = merge_sg_df(df_cleaned_month, grid_df_month, element)
+                del grid_df_month
+                del df_cleaned_month
+            except Exception as e:
+                print(f"|--->({element}, {year}-{month:02d}) 错误: 站点数据和格点数据合并失败: {e}")
+                continue
+            
+            # 增量写入临时文件
+            if not df_sg_month.empty:
+                try:
+                    table = pa.Table.from_pandas(df_sg_month, preserve_index=False)
+                    if parquet_writer is None:
+                        # 如果是第一个月, 使用它的schema创建写入器
+                        parquet_writer = pq.ParquetWriter(output_file, table.schema)
+                    # 写入当月的数据块
+                    parquet_writer.write_table(table)
+                    total_records_processed += len(df_sg_month)
+                    print(f"|--->({element}, {year}-{month:02d}) 成功写入 {len(df_sg_month)} 条记录到临时文件")
+                    # 释放已写入的数据内存
+                    del df_sg_month
+                    del table
+
+                except Exception as e:
+                    print(f"|--->({element}, {year}-{month:02d}) 错误: 写入临时文件失败: {e}")
+                    update_task_status(db, subtask_id, "FAILED", progress_month_start, f"写入{month:02d}月数据到临时文件失败: {e}")
+                    if parquet_writer:
+                        parquet_writer.close()
+                    return
+        # 关闭写入器
+        if parquet_writer:
+            parquet_writer.close()
         else:
-            print(f"|--->({element}, {year} 警告: 合并后的数据为空, 跳过")
-        update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据处理完成, 共得到 {len(df_sg)} 条记录, 已保存到临时文件: {output_file}")
-        print(f"|-- [Worker PID:{mp.current_process().pid}] {year} 年 {element} 数据处理完成, 共得到 {len(df_sg)} 条记录")
-    
+            print(f"|--->警告: ({element}, {year}) 未处理任何月份的数据")
+            # 创建一个空文件表示完成, 避免导入器出错
+            pd.DataFrame().to_parquet(output_file, index=False)
+            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年 {element} 未找到有效数据, 已跳过")
+            return
+
+        # 释放内存
+        del df_cleaned
+        
+        update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据处理完成, 共得到 {total_records_processed} 条记录, 已保存到临时文件: {output_file}")
+        print(f"|-- [Worker PID:{mp.current_process().pid}] {year} 年 {element} 数据处理完成, 共得到 {total_records_processed} 条记录, 耗时: {time.time() - start_time:.2f} 秒")
+
     except Exception as e:
         # 捕获任何异常, 更新任务状态为失败"FAILED"
         error_msg = f"处理失败: {str(e)}"

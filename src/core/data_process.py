@@ -18,7 +18,7 @@ def clean_station_data(df: pd.DataFrame) -> pd.DataFrame:
     """清洗站点数据"""
     df_cleaned = df.copy()
     # 1. 将异常值转换为缺失值
-    df_cleaned.loc[df_cleaned['station_value'] > 9999, 'station_value'] = np.nan
+    df_cleaned.loc[df_cleaned['station_value'] > 9998, 'station_value'] = np.nan
     # 处理缺失值: 三次样条插值/线性插值/直接删除
     if df_cleaned['station_value'].isnull().sum() > 0:
         try:
@@ -32,7 +32,6 @@ def clean_station_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def extract_grid_values_for_stations(ds, var_grid: str, station_coords: dict, year: str) -> pd.DataFrame:
     """从数据集中提取网格值"""
-    print(f"|-->({year}, {var_grid}) 正在提取所有站点的格点值...")
     lats = [info["lat"] for info in station_coords.values()]
     lons = [info["lon"] for info in station_coords.values()]
     station_ids = list(station_coords.keys())
