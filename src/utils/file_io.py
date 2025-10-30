@@ -30,6 +30,18 @@ def get_grid_files(dir, var_grid, year):
     grid_files = sorted(glob.glob(pattern))
     return grid_files
 
+def get_grid_files_for_month(dir, var_grid, year, month):
+    """按年和月获取格点文件列表(每个进程一次性读取1个月而非一年,减轻磁盘压力)"""
+    if not os.path.isdir(dir):
+        raise ValueError(f"{dir} 不是有效目录")
+    dir = os.path.join(dir, f"{var_grid}.hourly", str(year))
+    if not os.path.isdir(dir):
+        print(f"|--> 警告: 目录 {dir} 不存在, 无法获取 {year}年{month}月 的格点文件")
+        return []
+    pattern = os.path.join(dir, f"CARAS.{year}{month:02d}*.nc")
+    grid_files = sorted(glob.glob(pattern))
+    return grid_files
+
 def find_nc_file_for_timestamp(element: str, timestamp: datetime) -> Path:
     """根据要素和时间戳定位对应的.nc文件"""
     nc_var = ELEMENT_TO_NC_MAPPING.get(element)
@@ -50,74 +62,31 @@ def find_nc_file_for_timestamp(element: str, timestamp: datetime) -> Path:
 
 def safe_open_mfdataset(grid_files, **kwargs):
     """安全地打开多个netCDF文件, 处理坐标问题(基于手动合并方案优化)"""
+    if not grid_files:
+        raise ValueError("没有找到任何格点文件")
     try:
-        # 首先尝试标准方法
-        ds = xr.open_mfdataset(grid_files, **kwargs)
-        return ds
-    except ValueError as e:
-        error_msg = str(e).lower()
+        # 获取第一个文件作为坐标基准
+        with xr.open_dataset(grid_files[0]) as ref_ds:
+            ref_lat = ref_ds.lat
+            ref_lon = ref_ds.lon
+            print(f"|--> 使用 {grid_files[0]} 的坐标作为基准打开文件: lat: ({ref_lat.min():.2f}, {ref_lat.max():.2f}) | lon: ({ref_lon.min():.2f}, {ref_lon.max():.2f})")
         
-        # 检测全局纬度索引不单调错误
-        if ("non-monotonic" in error_msg or "not monotonic" in error_msg or 
-            "global indexes" in error_msg and "lat" in error_msg):
-            print(f"检测到纬度全局索引不单调问题: {e}")
-            print("使用替代合并方案...")
-            
-            try:
-                # 获取第一个文件的坐标作为基准
-                with xr.open_dataset(grid_files[0]) as ref_ds:
-                    ref_lat = ref_ds.lat.values.copy()
-                    ref_lon = ref_ds.lon.values.copy()
-                
-                print(f"所使用的坐标标准: lat: ({ref_lat.min():.2f}, {ref_lat.max():.2f}) | lon: ({ref_lon.min():.2f}, {ref_lon.max():.2f})")
-                
-                # 使用dask分块读取并统一坐标
-                ds_list = []
-                for i, file in enumerate(grid_files):
-                    try:
-                        # 使用分块读取减少内存占用
-                        ds = xr.open_dataset(file, chunks={'time': 24})
-                        # 统一使用第一个文件的坐标作为标准
-                        ds = ds.assign_coords(lat=ref_lat, lon=ref_lon)
-                        ds_list.append(ds)
-                        # print(f"文件 {i+1}/{len(grid_files)} 坐标统一完成")
-                    except Exception as file_error:
-                        print(f"处理文件 {file} 时出错: {file_error}")
-                        # 如果分块处理失败，尝试不使用分块
-                        try:
-                            ds = xr.open_dataset(file)
-                            ds = ds.assign_coords(lat=ref_lat, lon=ref_lon)
-                            ds_list.append(ds)
-                            # print(f"文件 {i+1}/{len(grid_files)} 坐标统一完成(无分块)")
-                        except:
-                            raise
-                
-                if not ds_list:
-                    raise ValueError("没有成功读取任何文件")
-                
-                # 合并所有数据集
-                print(f"正在合并 {len(ds_list)} 个文件...")
-                merged = xr.concat(ds_list, dim='time')
-                
-                # 获取变量名(假设所有文件有相同的变量)
-                var_name = list(merged.data_vars.keys())[0] if merged.data_vars else None
-                if var_name:
-                    print(f"合并后的数据形状: {var_name}:{merged[var_name].shape}")
-                
-                print("所有文件坐标统一完成，成功合并数据")
-                return merged
-                
-            except Exception as merge_error:
-                print(f"手动合并方案失败: {merge_error}")
-                # 最后尝试: 只使用第一个文件
-                try:
-                    print("尝试仅使用第一个文件...")
-                    ds_first = xr.open_dataset(grid_files[0])
-                    return ds_first
-                except Exception as first_error:
-                    print(f"无法打开第一个文件: {first_error}")
-                    raise ValueError(f"无法处理坐标非单调问题: {e}")
-        else:
+        def _preprocess(ds):
+            """在xarray打开每个文件时, 强制分配标准坐标"""
+            return ds.assign_coords(lat=ref_lat, lon=ref_lon)
+
+        ds = xr.open_mfdataset(grid_files, preprocess=_preprocess, combine="by_coords", parallel=True, **kwargs)
+        print(f"|--> by_coords方案成功打开 {len(grid_files)} 个文件")
+        return ds
+    except Exception as e:
+        print(f"打开文件时发生错误, 尝试使用'nested'合并: {e}")
+        try:
+            ds = xr.open_mfdataset(grid_files, combine="nested", concat_dim="time", parallel=True, **kwargs)
+            ds = ds.assign_coords(lat=ref_lat, lon=ref_lon)
+            print(f"|--> nested方案成功打开 {len(grid_files)} 个文件")
+            return ds
+        except Exception as e:
+            print(f"打开文件发生错误, by_coords和nested方案都失败: {e}")
             raise
 
 def save_model(

@@ -45,35 +45,35 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
 
     try:
         # 更新子任务状态为 处理中"PROCESSING"
-        update_task_status(db, subtask_id, "PROCESSING", 0.0, f"开始处理 {year} 年的 {element} 数据...")
-        print(f"|---> [Worker PID:{mp.current_process().pid}] 开始处理 {year} 年的 {element} 数据...")
+        update_task_status(db, subtask_id, "PROCESSING", 0.0, f"正在处理 {year} 年的 {element} 数据...")
+        print(f"|---> [Worker PID:{mp.current_process().pid}] 正在处理 {year} 年的 {element} 数据...")
         
         # 重复处理检查
         print(f"|---> 正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
-        update_task_status(db, subtask_id, "PROCESSING", 5.0, f"正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
+        update_task_status(db, subtask_id, "PROCESSING", 3.0, f"正在检查 {year} 年的 {element} 数据是否已存在于数据库中...")
         is_processed = check_existed_element_by_year(db, element, int(year))
         if is_processed:
             print(f"|---> 警告: {year} 年的 {element} 数据已存在于数据库中, 跳过处理")
-            update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据已存在, 跳过处理")
+            update_task_status(db, subtask_id, "COMPLETED", 3.0, f"{year} 年的 {element} 数据已存在, 跳过处理")
             return
         else:
-            print(f"|---> {year} 年的 {element} 数据未处理, 准备开始处理...")
+            print(f"|---> {year} 年的 {element} 数据未处理, 准备处理...")
 
         # 1. 从数据库读取指定element, year的所有站点数据表df(分块读取)
         try:
-            update_task_status(db, subtask_id, "PROCESSING", 6.0, f"开始读取 {year} 年的 {element} 站点数据...")
+            update_task_status(db, subtask_id, "PROCESSING", 5.0, f"正在读取 {year} 年的 {element} 站点数据...")
             db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
             df_itrator = get_raw_station_data_by_year(db, db_column_name, int(year), chunk_size=8760)
-            update_task_status(db, subtask_id, "PROCESSING", 10.0, f"已读取 {year} 年的 {element} 站点数据")
+            update_task_status(db, subtask_id, "PROCESSING", 8.0, f"已读取 {year} 年的 {element} 站点数据")
         except Exception as e:
             print(f"|---> 警告: 读取 {year} 年的 {element} 站点数据时发生错误: {e}")
-            update_task_status(db, subtask_id, "FAILED", 0.0, f"读取 {year} 年的 {element} 站点数据时发生错误: {e}")
+            update_task_status(db, subtask_id, "FAILED", 5.0, f"读取 {year} 年的 {element} 站点数据时发生错误: {e}")
             return
         
         # 2. 数据清洗, 分块清洗
         cleaned_chunks = [] # 搜集清洗后的数据块
         total_raws = 0
-        update_task_status(db, subtask_id, "PROCESSING", 11.0, f"开始分块清洗 {year} 年的 {element} 站点数据...")
+        update_task_status(db, subtask_id, "PROCESSING", 10.0, f"正在分块清洗 {year} 年的 {element} 站点数据...")
         print(f"|---> 开始分块清洗 {year} 年的 {element} 站点数据...")
         start_time = time()
         for df_chunk in df_itrator:
@@ -83,54 +83,58 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
 
         if not cleaned_chunks:
             print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 站点数据")
-            update_task_status(db, subtask_id, "FAILED", 100.0, f"在 {year} 年未找到有效的 {element} 站点数据")
+            update_task_status(db, subtask_id, "FAILED", 10.0, f"在 {year} 年未找到有效的 {element} 站点数据")
             print(f"|-- [Worker PID:{mp.current_process().pid}] 警告: 在 {year} 年未找到有效的 {element} 站点数据")
             return
         
         df_cleaned = pd.concat(cleaned_chunks, ignore_index=True)
         # 将"station_value"列重命名为DB中的列名
         df_cleaned.rename(columns={"station_value": db_column_name}, inplace=True)
-        update_task_status(db, subtask_id, "PROCESSING", 30.0, f"已清洗完成 {year} 年的 {element} 站点数据, 共 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
+        update_task_status(db, subtask_id, "PROCESSING", 20.0, f"已清洗完成 {year} 年的 {element} 站点数据, 共 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
         print(f"耗时: {time() - start_time:.2f} 秒, 共处理 {total_raws} 条原始记录, 清洗后剩余 {len(df_cleaned)} 条有效记录")
 
         # 3. 读取所有站点的经纬度表
+        update_task_status(db, subtask_id, "PROCESSING", 22.0, f"正在获取 {year} 年的 {element} 格点数据...")
         station_info = pd.read_csv(settings.STATION_INFO_PATH, encoding="gbk")
         station_coords = {}
         for _, row in station_info.iterrows():
             station_coords[row["区站号(数字)"]] = {"station_name": row["站名"], "lat": row["纬度"], "lon": row["经度"]}
 
         # 4. 根据82个站点的经纬度坐标一次性提取格点值
-        update_task_status(db, subtask_id, "PROCESSING", 31.0, f"开始提取 {year} 年的 {element} 格点数据...")
+        update_task_status(db, subtask_id, "PROCESSING", 23.0, f"正在获取 {year} 年的 {element} 格点数据...")
         start_time = time()
         grid_files = get_grid_files(settings.GRID_DATA_DIR, ELEMENT_TO_NC_MAPPING.get(element), year)
+        update_task_status(db, subtask_id, "PROCESSING", 25.0, f"成功获取 {year} 年的 {element} 格点数据")
         if not grid_files:
-            update_task_status(db, subtask_id, "FAILED", 100.0, f"在 {year} 年未找到有效的 {element} 格点数据")
+            update_task_status(db, subtask_id, "FAILED", 23.0, f"在 {year} 年未找到有效的 {element} 格点数据")
             print(f"|---> 警告: 在 {year} 年未找到有效的 {element} 格点数据文件")
             return
         print(f"|--->({element}, {year}) 读取 {len(grid_files)} 个格点文件, 准备提取格点值...")
 
         # 打开多个netCDF文件, 处理坐标非单调问题
         try:
+            update_task_status(db, subtask_id, "PROCESSING", 27.0, f"正在合并打开 {year} 年的 {element} 格点数据...")
             ds = safe_open_mfdataset(grid_files)
-            print(f"({element}, {year}年) 备选合并方案成功打开格点数据")
+            update_task_status(db, subtask_id, "PROCESSING", 30.0, f"已合并打开 {year} 年的 {element} 格点数据")
         except Exception as e:
             print(f"({element}, {year}年) 错误: 无法打开格点数据文件: {e}")
-            update_task_status(db, subtask_id, "FAILED", 0.0, f"打开格点数据文件失败: {e}")
+            update_task_status(db, subtask_id, "FAILED", 27.0, f"打开格点数据文件失败: {e}")
             return
 
         try:
+            update_task_status(db, subtask_id, "PROCESSING", 35.0, f"正在提取 {year} 年的 {element} 格点数据...")
             grid_df = extract_grid_values_for_stations(ds, ELEMENT_TO_NC_MAPPING.get(element), station_coords, year)
             ds.close()
-            update_task_status(db, subtask_id, "PROCESSING", 60.0, f"格点数据提取完成, 已提取 {len(grid_df)} 条格点记录")
+            update_task_status(db, subtask_id, "PROCESSING", 65.0, f"格点数据提取完成, 已提取 {len(grid_df)} 条格点记录")
             print(f"耗时: {time() - start_time:.2f} 秒, 共提取 {len(grid_df)} 条格点记录")
         except Exception as e:
             print(f"({element}, {year}年) 错误: 无法提取格点数据: {e}")
-            update_task_status(db, subtask_id, "FAILED", 0.0, f"提取格点数据失败: {e}")
+            update_task_status(db, subtask_id, "FAILED", 35.0, f"提取格点数据失败: {e}")
             return
         
         # 5. 合并站点数据和格点数据
         try:
-            update_task_status(db, subtask_id, "PROCESSING", 61.0, f"开始合并站点数据和格点数据...")
+            update_task_status(db, subtask_id, "PROCESSING", 70.0, f"开始合并站点数据和格点数据...")
             print(f"|--->({element}, {year}) 开始合并站点数据和格点数据...")
             start_time = time()
             df_sg = merge_sg_df(df_cleaned, grid_df, element)
@@ -138,16 +142,16 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             print(f"耗时: {time() - start_time:.2f} 秒, 共合并得到 {len(df_sg)} 条记录")
         except Exception as e:
             print(f"|--->({element}, {year}) 错误: 站点数据和格点数据合并失败: {e}")
-            update_task_status(db, subtask_id, "FAILED", 0.0, f"站点数据和格点数据合并失败: {e}")
+            update_task_status(db, subtask_id, "FAILED", 70.0, f"站点数据和格点数据合并失败: {e}")
             return
         # 6. 将合并后的数据以parquet格式保存到临时目录
-        update_task_status(db, subtask_id, "PROCESSING", 91.0, f"开始将合并后的数据保存到临时文件...")
+        update_task_status(db, subtask_id, "PROCESSING", 95.0, f"开始将合并后的数据保存到临时文件...")
         if not df_sg.empty:
             print(f"|--->({element}, {year}) 将 {len(df_sg)} 条合并后的数据写入临时文件: {output_file}")
             df_sg.to_parquet(output_file, index=False)
         else:
             print(f"|--->({element}, {year} 警告: 合并后的数据为空, 跳过")
-        update_task_status(db, subtask_id, "COMPLETED", "100.0", f"{year} 年的 {element} 数据处理完成, 共得到 {len(df_sg)} 条记录, 已保存到临时文件: {output_file}")
+        update_task_status(db, subtask_id, "COMPLETED", 100.0, f"{year} 年的 {element} 数据处理完成, 共得到 {len(df_sg)} 条记录, 已保存到临时文件: {output_file}")
         print(f"|-- [Worker PID:{mp.current_process().pid}] {year} 年 {element} 数据处理完成, 共得到 {len(df_sg)} 条记录")
     
     except Exception as e:
@@ -165,7 +169,7 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
     sub_tasks_info = []
     try:
         # 1. 创建子任务
-        update_task_status(db, task_id, "PROCESSING", 1.0, "正在创建子任务...")
+        update_task_status(db, task_id, "PROCESSING", 2.0, "正在创建子任务...")
         years = range(int(start_year), int(end_year) + 1)
         for element in elements:
             for year in years:
@@ -187,7 +191,7 @@ def process_mp(task_id: str, elements: List[str], start_year: str, end_year: str
             parent_task_id=task_id 
         )
         total_tasks = len(sub_tasks_info)
-        update_task_status(db, task_id, "PROCESSING", 2.0, "子任务创建完成, 开始处理数据...")
+        update_task_status(db, task_id, "PROCESSING", 5.0, "子任务创建完成, 开始处理数据...")
         print(f"|--> 主进程: 已为任务 {task_id} 创建 {total_tasks} 个子任务, 准备开始处理数据...")
 
         # 2. 设置进程池并分发任务
