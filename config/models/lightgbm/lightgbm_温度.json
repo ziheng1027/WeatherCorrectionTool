@@ -2,10 +2,10 @@
     "objective": "regression",
     "boosting_type": "gbdt",
     "learning_rate": 0.01,
-    "n_estimators": 1600,
-    "num_leaves": 64,
+    "n_estimators": 3000,
+    "num_leaves": 63,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
-    "reg_lambda": 1,
+    "reg_lambda": 5,
     "metric": "rmse"
 }
