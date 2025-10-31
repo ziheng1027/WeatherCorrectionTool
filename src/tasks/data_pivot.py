@@ -14,7 +14,7 @@ from ..db.database import SessionLocal
 from ..core.config import settings
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING, get_name_to_id_mapping
 from ..core.data_pivot import bulid_feature_for_pivot
-from ..utils.file_io import load_model, find_corrected_nc_file_for_timestamp
+from ..utils.file_io import load_model, find_nc_file_for_timestamp, find_corrected_nc_file_for_timestamp
 from ..utils.metrics import cal_metrics
 
 matplotlib.use('Agg')  # 使用 'Agg' 后端, 适用于非GUI环境的后台任务
@@ -185,31 +185,51 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
         for i, ts in enumerate(timestamps):
             try:
                 # 查找对应的订正文件
-                nc_file_path = find_corrected_nc_file_for_timestamp(element, ts)
+                nc_file_path = find_nc_file_for_timestamp(element, ts)
+                correct_nc_file_path = find_corrected_nc_file_for_timestamp(element, ts)
                 
                 # 使用 xarray 和 matplotlib 绘图
-                with xr.open_dataset(nc_file_path) as ds:
-                    data_array = ds[nc_var].isel(time=0)
+                with xr.open_dataset(nc_file_path) as ds_orig, xr.open_dataset(correct_nc_file_path) as ds_corr:
+                    data_array_orig = ds_orig[nc_var].isel(time=0)
+                    data_array_corr = ds_corr[nc_var].isel(time=0)
                     
-                    fig, ax = plt.subplots(figsize=(12, 8))
+                    # 创建一个包含两个子图的图像
+                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
                     
-                    # 绘制填色图, 自动添加色标尺
-                    data_array.plot.imshow(
-                        ax=ax, 
+                    # 计算两个数据集的最大最小值，用于统一色标范围
+                    vmin = min(data_array_orig.min(), data_array_corr.min())
+                    vmax = max(data_array_orig.max(), data_array_corr.max())
+                    
+                    # 绘制订正前的填色图
+                    data_array_orig.plot.imshow(
+                        ax=ax1,
                         cmap='coolwarm',
+                        vmin=vmin,
+                        vmax=vmax,
                         cbar_kwargs={'label': element}
                     )
+                    ax1.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=16)
                     
-                    ax.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=16)
+                    # 绘制订正后的填色图
+                    data_array_corr.plot.imshow(
+                        ax=ax2,
+                        cmap='coolwarm',
+                        vmin=vmin,
+                        vmax=vmax,
+                        cbar_kwargs={'label': element}
+                    )
+                    ax2.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=16)
+                    
+                    plt.tight_layout()  # 自动调整子图布局
                     
                     # 定义图像输出路径
-                    img_filename = f"corrected_{nc_var}_{ts.strftime('%Y%m%d%H')}.png"
+                    img_filename = f"compare_{nc_var}_{ts.strftime('%Y%m%d%H')}.png"
                     img_path = temp_image_dir / img_filename
                     
                     # 保存图像
                     fig.savefig(img_path, dpi=100, bbox_inches='tight')
                     
-                    # [重要] 关闭图像以释放内存
+                    # 关闭图像以释放内存
                     plt.close(fig)
                     
                 files_found += 1
