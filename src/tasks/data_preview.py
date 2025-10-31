@@ -77,7 +77,7 @@ def create_export_zip_task(task_id: str, element: str, start_time: datetime, end
 
 def create_export_images_task(task_id: str, element: str, start_time: datetime, end_time: datetime):
     """
-    [新任务] 查找订正后的.nc文件, 绘制成.png图像, 并压缩为.zip包。
+    [新任务] 查找格点.nc文件, 绘制成.png图像, 并压缩为.zip包。
     """
     db = SessionLocal()
     try:
@@ -119,10 +119,10 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
                         cbar_kwargs={'label': element}
                     )
                     
-                    ax.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=16)
+                    ax.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=16)
                     
                     # 定义图像输出路径
-                    img_filename = f"corrected_{nc_var}_{ts.strftime('%Y%m%d%H')}.png"
+                    img_filename = f"{nc_var}_{ts.strftime('%Y%m%d%H')}.png"
                     img_path = temp_image_dir / img_filename
                     
                     # 保存图像
@@ -151,7 +151,7 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for img_file in temp_image_dir.glob("*.png"):
                 zf.write(img_file, arcname=img_file.name)
-        
+
         # 6. 任务完成, 更新数据库
         final_message = f"图像打包完成, 共生成 {files_found} / {total_files} 张图像"
         task = crud.get_task_by_id(db, task_id)

@@ -174,13 +174,13 @@ def get_grid_time_series_status(task_id: str):
 
 
 @router.post("/export-grid-data", response_model=schemas.TaskCreationResponse, summary="启动格点数据打包导出任务")
-def export_corrected_data(
+def export_data(
     request: schemas.DataExportRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    根据要素和时间范围, 启动一个后台任务, 将订正后的.nc文件压缩为.zip包。
+    根据要素和时间范围, 启动一个后台任务, 将格点.nc文件压缩为.zip包。
     """
     # 检查起止日期的格点数据是否存在
     try:
@@ -227,7 +227,7 @@ def export_corrected_data(
 
 
 @router.post("/export-grid-images", response_model=schemas.TaskCreationResponse, summary="启动格点数据(PNG)打包导出任务")
-def export_corrected_images(
+def export_images(
     request: schemas.DataExportRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
