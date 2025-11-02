@@ -5,7 +5,9 @@ import zipfile
 import matplotlib
 import pandas as pd
 import xarray as xr
+import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 from pathlib import Path
 from typing import List
 from datetime import datetime
@@ -20,6 +22,14 @@ from ..utils.metrics import cal_metrics
 matplotlib.use('Agg')  # 使用 'Agg' 后端, 适用于非GUI环境的后台任务
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+
+# 要素到单位的映射，用于在色标上显示单位
+ELEMENT_UNIT_MAPPING = {
+    '温度': '℃',
+    '过去1小时降水量': 'mm',
+    '相对湿度': '%',
+    '2分钟平均风速': 'm/s',
+}
 
 
 def evaluate_model(task_id: str, element: str, station_name: str, start_time: datetime, end_time: datetime, model_paths: List[str]):
@@ -188,40 +198,91 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
                 nc_file_path = find_nc_file_for_timestamp(element, ts)
                 correct_nc_file_path = find_corrected_nc_file_for_timestamp(element, ts)
                 
-                # 使用 xarray 和 matplotlib 绘图
+                # 使用 xarray 和 matplotlib 绘图：一行三列（原始 / 订正 / 误差）
                 with xr.open_dataset(nc_file_path) as ds_orig, xr.open_dataset(correct_nc_file_path) as ds_corr:
                     data_array_orig = ds_orig[nc_var].isel(time=0)
                     data_array_corr = ds_corr[nc_var].isel(time=0)
-                    
-                    # 创建一个包含两个子图的图像
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
-                    
-                    # 计算两个数据集的最大最小值，用于统一色标范围
-                    vmin = min(data_array_orig.min(), data_array_corr.min())
-                    vmax = max(data_array_orig.max(), data_array_corr.max())
-                    
-                    # 绘制订正前的填色图
+
+                    # 计算两个数据集的最大最小值，用于原始和订正图的统一色标范围
+                    try:
+                        orig_min = float(np.nanmin(data_array_orig.values))
+                        corr_min = float(np.nanmin(data_array_corr.values))
+                        orig_max = float(np.nanmax(data_array_orig.values))
+                        corr_max = float(np.nanmax(data_array_corr.values))
+                    except Exception:
+                        # 在极少数情况下 dataarray 可能为空或含 NaN
+                        orig_min = float(data_array_orig.min().values) if hasattr(data_array_orig.min(), 'values') else float(data_array_orig.min())
+                        corr_min = float(data_array_corr.min().values) if hasattr(data_array_corr.min(), 'values') else float(data_array_corr.min())
+                        orig_max = float(data_array_orig.max().values) if hasattr(data_array_orig.max(), 'values') else float(data_array_orig.max())
+                        corr_max = float(data_array_corr.max().values) if hasattr(data_array_corr.max(), 'values') else float(data_array_corr.max())
+
+                    vmin = min(orig_min, corr_min)
+                    vmax = max(orig_max, corr_max)
+
+                    # 计算误差并确定对称色标范围
+                    diff = data_array_corr - data_array_orig
+                    try:
+                        diff_abs_max = float(np.nanmax(np.abs(diff.values)))
+                    except Exception:
+                        diff_abs_max = float(np.nanmax(np.abs(diff)))
+
+                    # 创建一行三列的子图
+                    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(24, 8))
+
+                    # 单位和色标标签
+                    unit = ELEMENT_UNIT_MAPPING.get(element, '')
+                    value_label = f"{element} ({unit})" if unit else element
+                    diff_label = f"{element} (diff, {unit})" if unit else f"{element} (diff)"
+
+                    # 经纬度刻度格式化器，添加°符号且去掉多余零
+                    def _deg_fmt(x, pos):
+                        try:
+                            s = f"{x:.2f}"
+                            if '.' in s:
+                                s = s.rstrip('0').rstrip('.')
+                        except Exception:
+                            s = str(x)
+                        return s + '°'
+                    degree_formatter = FuncFormatter(_deg_fmt)
+
+                    # 绘制订正前
                     data_array_orig.plot.imshow(
                         ax=ax1,
                         cmap='coolwarm',
                         vmin=vmin,
                         vmax=vmax,
-                        cbar_kwargs={'label': element}
+                        cbar_kwargs={'label': value_label}
                     )
-                    ax1.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=16)
-                    
-                    # 绘制订正后的填色图
+                    ax1.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
+                    ax1.xaxis.set_major_formatter(degree_formatter)
+                    ax1.yaxis.set_major_formatter(degree_formatter)
+
+                    # 绘制订正后
                     data_array_corr.plot.imshow(
                         ax=ax2,
                         cmap='coolwarm',
                         vmin=vmin,
                         vmax=vmax,
-                        cbar_kwargs={'label': element}
+                        cbar_kwargs={'label': value_label}
                     )
-                    ax2.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=16)
-                    
+                    ax2.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
+                    ax2.xaxis.set_major_formatter(degree_formatter)
+                    ax2.yaxis.set_major_formatter(degree_formatter)
+
+                    # 绘制误差 (订正后 - 订正前)，使用对称的发散色标
+                    diff.plot.imshow(
+                        ax=ax3,
+                        cmap='RdBu_r',
+                        vmin=-diff_abs_max,
+                        vmax=diff_abs_max,
+                        cbar_kwargs={'label': diff_label}
+                    )
+                    ax3.set_title(f"误差 (订正后 - 订正前)\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
+                    ax3.xaxis.set_major_formatter(degree_formatter)
+                    ax3.yaxis.set_major_formatter(degree_formatter)
+
                     plt.tight_layout()  # 自动调整子图布局
-                    
+
                     # 定义图像输出路径
                     img_filename = f"compare_{nc_var}_{ts.strftime('%Y%m%d%H')}.png"
                     img_path = temp_image_dir / img_filename
