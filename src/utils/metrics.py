@@ -29,18 +29,16 @@ def MAE(obs, grid):
     """
     return np.mean(np.abs(obs - grid))
 
-def MRE(obs, grid, epsilon=1e-5):
+def MRE(obs, grid):
     """
     平均相对误差Mean Relative Error (MRE)
     :param obs: 观测值O
     :param grid: 网格值G
     :return: MRE值
     """
-    obs = np.array(obs)
-    grid = np.array(grid)
-    # 当obs为0时，分母设为1，否则为|obs|+epsilon
-    denom = np.where(obs == 0, 1, np.abs(obs) + epsilon)
-    return np.mean(np.abs((obs - grid) / denom))
+    if np.sum(obs) == 0:
+        return np.nan
+    return np.sum(grid - obs) / np.sum(obs)
 
 def MBE(obs, grid):
     """
@@ -60,7 +58,7 @@ def R2(obs, grid):
     """
     return 1 - np.sum((obs - grid) ** 2) / np.sum((obs - np.mean(obs)) ** 2)
 
-def cal_metrics(obs, pred, epsilon=1e-3):
+def cal_metrics(obs, pred):
     """
     计算评价指标
     :param obs: 观测值O
@@ -72,7 +70,7 @@ def cal_metrics(obs, pred, epsilon=1e-3):
     metrics['CC'] = format(CC(obs, pred), ".4f")
     metrics['RMSE'] = format(RMSE(obs, pred), ".4f")
     metrics['MAE'] = format(MAE(obs, pred), ".4f")
-    metrics['MRE'] = format(MRE(obs, pred, epsilon), ".4f")
+    metrics['MRE'] = format(MRE(obs, pred), ".4f")
     metrics['MBE'] = format(MBE(obs, pred), ".4f")
     metrics['R2'] = format(R2(obs, pred), ".4f")
     return metrics
