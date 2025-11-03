@@ -49,8 +49,7 @@ ELEMENT_BAR_MAPPING = {
             '#6FC76F',  # 60-70 中绿
             '#57B757',  # 70-80 深绿
             '#3FA73F',  # 80-90 更深绿
-            '#289728',  # 90-100 最深绿
-            "#026602"   # >100 深绿色
+            '#289728'   # 90-100 最深绿
         ]
     },
     '2分钟平均风速': 'RdYlBu_r',
@@ -215,7 +214,7 @@ def create_export_images_task(
     end_time: datetime
 ):
     """
-    [新任务] 查找订正后的.nc文件, 绘制成.png图像, 并压缩为.zip包。
+    查找订正后的.nc文件, 绘制成.png图像, 并压缩为.zip包。
     """
     db = SessionLocal()
     try:    
@@ -238,16 +237,16 @@ def create_export_images_task(
         
         crud.update_task_status(db, task_id, "PROCESSING", 0, f"准备生成 {total_files} 张图像...")
 
-        # 【修改】读取湖北省行政区划边界，并准备一个用于掩膜的合并后边界
+        # 读取湖北省行政区划边界，并准备一个用于掩膜的合并后边界
         province_gdf = None # 用于绘制市界
-        hubei_mask_geometry = None # 【新增】用于裁剪
+        hubei_mask_geometry = None # 用于裁剪
         province_geo_path = Path(settings.HUBEI_MAP_PATH)
         
         if province_geo_path.exists():
             try:
                 province_gdf = gpd.read_file(province_geo_path)
                 
-                # 【新增】开始：准备用于掩膜的省级边界
+                # 准备用于掩膜的省级边界
                 # 确保 CRS (WGS84)
                 if province_gdf.crs is None:
                     province_gdf_crs = province_gdf.set_crs("EPSG:4326")
@@ -258,7 +257,7 @@ def create_export_images_task(
                 hubei_boundary_dissolved = province_gdf_crs.dissolve()
                 hubei_mask_geometry = hubei_boundary_dissolved.geometry
                 
-                # 【新增 DEBUG 日志】 打印 GeoJSON 范围
+                # 打印 GeoJSON 范围
                 print(f"信息: 成功加载 GeoJSON 掩膜. 边界范围 (lon/lat bounds): {hubei_mask_geometry.bounds}")
                 
             except Exception as geo_e:
@@ -278,7 +277,7 @@ def create_export_images_task(
                 # 使用 xarray 和 matplotlib 绘图：一行三列（原始 / 订正 / 误差）
                 with xr.open_dataset(nc_file_path) as ds_orig, xr.open_dataset(correct_nc_file_path) as ds_corr:
                     
-                    # 【修改】步骤 1: 立即为整个数据集设置空间维度
+                    # 步骤 1: 立即为整个数据集设置空间维度
                     try:
                         # 检查 .rio 访问器是否存在
                         if rioxarray is None or not hasattr(ds_orig, "rio"):
@@ -306,7 +305,7 @@ def create_export_images_task(
                         data_array_orig = data_array_orig.clip(max=100)
                         data_array_corr = data_array_corr.clip(max=100)
 
-                    # 【新增】步骤 3: 在裁剪前, 重命名维度为 'x' 和 'y'
+                    # 步骤 3: 在裁剪前, 重命名维度为 'x' 和 'y'
                     # rioxarray.clip() 严格要求维度名为 'x' 和 'y'
                     try:
                         data_array_orig = data_array_orig.rename({'lon': 'x', 'lat': 'y'})
@@ -314,12 +313,12 @@ def create_export_images_task(
                     except Exception as rename_e:
                         print(f"警告: 重命名 'lon'/'lat' 失败: {rename_e}。裁剪可能会失败。")
 
-                    # 步骤 4: 【修改】应用掩膜 (如果 hubei_mask_geometry 存在)
+                    # 步骤 4: 应用掩膜 (如果 hubei_mask_geometry 存在)
                     if hubei_mask_geometry is not None:
                         try:
                             # 检查 DataArray 范围 (仅调试一次)
                             if i == 0: 
-                                # 【修改】使用 'x' 和 'y'
+                                # 使用 'x' 和 'y'
                                 print(f"信息 (ts={ts}): 准备裁剪. DataArray 范围 (x): {float(data_array_orig['x'].min())} to {float(data_array_orig['x'].max())}")
                                 print(f"信息 (ts={ts}): 准备裁剪. DataArray 范围 (y): {float(data_array_orig['y'].min())} to {float(data_array_orig['y'].max())}")
 
@@ -341,7 +340,7 @@ def create_export_images_task(
                         except Exception as clip_e:
                             print(f"警告: 裁剪步骤失败: {clip_e}")
 
-                    # 【修改】计算最大最小值，用于统一色标范围
+                    # 计算最大最小值，用于统一色标范围
                     # 使用 np.nanmin/np.nanmax 忽略掩膜区域的NaN值
                     try:
                         orig_min = float(np.nanmin(data_array_orig.values))
@@ -442,8 +441,8 @@ def create_export_images_task(
                     ax1.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax1.xaxis.set_major_formatter(lon_formatter)
                     ax1.yaxis.set_major_formatter(lat_formatter)
-                    ax1.set_xlabel('Longitude') # 【新增】确保轴标签正确
-                    ax1.set_ylabel('Latitude')  # 【新增】确保轴标签正确
+                    ax1.set_xlabel('Longitude') # 确保轴标签正确
+                    ax1.set_ylabel('Latitude')  # 确保轴标签正确
                     # 叠加湖北省行政区划边界和地名 (使用原始的 province_gdf)
                     if province_gdf is not None:
                         province_gdf.boundary.plot(ax=ax1, color='gray', linewidth=1)
@@ -475,8 +474,8 @@ def create_export_images_task(
                     ax2.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax2.xaxis.set_major_formatter(lon_formatter)
                     ax2.yaxis.set_major_formatter(lat_formatter)
-                    ax2.set_xlabel('Longitude') # 【新增】确保轴标签正确
-                    ax2.set_ylabel('Latitude')  # 【新增】确保轴标签正确
+                    ax2.set_xlabel('Longitude') # 确保轴标签正确
+                    ax2.set_ylabel('Latitude')  # 确保轴标签正确
                     if province_gdf is not None:
                         province_gdf.boundary.plot(ax=ax2, color='gray', linewidth=1)
                         for idx, row in province_gdf.iterrows():
@@ -497,8 +496,8 @@ def create_export_images_task(
                     ax3.set_title(f"误差 (订正后 - 订正前)\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax3.xaxis.set_major_formatter(lon_formatter)
                     ax3.yaxis.set_major_formatter(lat_formatter)
-                    ax3.set_xlabel('Longitude') # 【新增】确保轴标签正确
-                    ax3.set_ylabel('Latitude')  # 【新增】确保轴标签正确
+                    ax3.set_xlabel('Longitude') # 确保轴标签正确
+                    ax3.set_ylabel('Latitude')  # 确保轴标签正确
                     if province_gdf is not None:
                         province_gdf.boundary.plot(ax=ax3, color='gray', linewidth=1)
                         for idx, row in province_gdf.iterrows():
