@@ -5,9 +5,9 @@ import glob
 import pandas as pd
 import numpy as np
 import xarray as xr
-from typing import Optional, Callable
 from functools import reduce
 from sqlalchemy.orm import Session
+from typing import Optional, Callable
 from ..db import crud
 from ..core.config import settings
 from ..core.data_mapping import cst_to_utc, NC_TO_DB_MAPPING

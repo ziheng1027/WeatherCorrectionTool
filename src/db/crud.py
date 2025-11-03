@@ -404,6 +404,30 @@ def create_model_record(db: Session, model_info: dict) -> db_models.ModelRecord:
     db.refresh(record)
     return record
 
+def get_model_record_by_model_id(db: Session, model_id: str) -> Optional[db_models.ModelRecord]:
+    """根据 model_id (UUID字符串) 获取模型记录"""
+    return db.query(db_models.ModelRecord).filter(db_models.ModelRecord.model_id == model_id).first()
+
+def delete_model_record_by_model_id(db: Session, model_id: str) -> bool:
+    """根据 model_id (UUID字符串) 删除模型记录"""
+    record = db.query(db_models.ModelRecord).filter(db_models.ModelRecord.model_id == model_id).first()
+    if record:
+        db.delete(record)
+        # 注意: 仅在此处 commit
+        db.commit()
+        return True
+    return False
+
+def delete_task_by_task_id(db: Session, task_id: str) -> bool:
+    """根据 task_id 删除任务记录"""
+    task = db.query(db_models.TaskProgress).filter(db_models.TaskProgress.task_id == task_id).first()
+    if task:
+        db.delete(task)
+        # 注意: 仅在此处 commit
+        db.commit()
+        return True
+    return False
+
 """--------------------数据订正--------------------"""
 def get_model_record_by_task_id(db: Session, task_id: str) -> Optional[db_models.ModelRecord]:
     """根据task_id获取模型记录"""

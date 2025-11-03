@@ -230,3 +230,53 @@ def save_model_record(task_id: str, db: Session = Depends(get_db)):
     
     crud.create_model_record(db, model_info)
     return schemas.MessageResponse(message="模型记录已保存")
+
+@router.delete("/delete-model-record/{model_id}", response_model=schemas.MessageResponse, summary="删除指定的模型记录及其关联的任务")
+def delete_model_record(model_id: str, db: Session = Depends(get_db)):
+    """
+    根据 model_id 删除模型记录 (model_record) 和关联的任务记录 (task_progress)。
+    同时会尝试从文件系统删除 .ckpt 模型文件。
+    """
+    # 1. 查找模型记录
+    model_record = crud.get_model_record_by_model_id(db, model_id)
+    if not model_record:
+        raise HTTPException(status_code=404, detail=f"未找到 model_id 为 {model_id} 的模型记录")
+
+    task_id = model_record.task_id
+    model_path_str = model_record.model_path
+
+    # 2. 按顺序执行删除
+    try:
+        # 步骤 2.1: 删除模型记录 (ModelRecord)
+        crud.delete_model_record_by_model_id(db, model_id)
+        
+        # 步骤 2.2: 删除关联的任务记录 (TaskProgress)
+        task_delete_msg = ""
+        if task_id:
+            if crud.delete_task_by_task_id(db, task_id):
+                task_delete_msg = f"关联的任务 {task_id} 已删除。"
+            else:
+                task_delete_msg = f"未找到关联的任务 {task_id}。"
+        else:
+            task_delete_msg = "该模型没有关联的任务ID。"
+
+        # 步骤 2.3: (可选, 但推荐) 尝试删除物理文件
+        file_delete_msg = ""
+        try:
+            model_path = Path(model_path_str)
+            if model_path.exists():
+                os.remove(model_path)
+                file_delete_msg = "物理模型文件已删除。"
+            else:
+                file_delete_msg = "物理模型文件在磁盘上未找到。"
+        except Exception as e:
+            file_delete_msg = f"删除物理文件时出错: {e}"
+
+        return schemas.MessageResponse(
+            message=f"模型记录 {model_id} 已从数据库删除。{task_delete_msg} {file_delete_msg}"
+        )
+    
+    except Exception as e:
+        # 回滚, 尽管 crud 函数内部有 commit, 但在此处回滚以防万一
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"删除过程中发生数据库错误: {str(e)}")
