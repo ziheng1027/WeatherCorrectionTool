@@ -36,7 +36,11 @@ def MRE(obs, grid, epsilon=1e-5):
     :param grid: 网格值G
     :return: MRE值
     """
-    return np.mean(np.abs((obs - grid) / (np.abs(obs) + epsilon)))
+    obs = np.array(obs)
+    grid = np.array(grid)
+    # 当obs为0时，分母设为1，否则为|obs|+epsilon
+    denom = np.where(obs == 0, 1, np.abs(obs) + epsilon)
+    return np.mean(np.abs((obs - grid) / denom))
 
 def MBE(obs, grid):
     """
