@@ -1,6 +1,5 @@
 # src/tasks/data_pivot.py
 import json
-import cmaps
 import shutil
 import zipfile
 import rioxarray
@@ -34,26 +33,42 @@ ELEMENT_UNIT_MAPPING = {
     '2分钟平均风速': 'm/s'
 }
 
-# 要素到色标bar的映射, 降水bar的几个关键刻度设置:0.1, 2, 5, 10, 20, 50, 70, 100
+# 要素到色标bar的映射, 降水bar的几个关键刻度设置:0.1, 2, 5, 10, 20, 50, 70, 100, 200, 300
 ELEMENT_BAR_MAPPING = {
     '温度': 'RdBu_r',
-    '相对湿度': cmaps.OceanLakeLandSnow,
+    '相对湿度': {
+        'boundaries': [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+        'ticks': [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+        'colors': [
+            '#FFFFFF',  # 0-10 白色
+            '#E6F9E6',  # 10-20 极浅绿
+            '#CFF3CF',  # 20-30 很浅绿
+            '#B7EDB7',  # 30-40 浅绿
+            '#9FE79F',  # 40-50 绿
+            '#87D787',  # 50-60 稍深绿
+            '#6FC76F',  # 60-70 中绿
+            '#57B757',  # 70-80 深绿
+            '#3FA73F',  # 80-90 更深绿
+            '#289728',  # 90-100 最深绿
+            "#026602"   # >100 深绿色
+        ]
+    },
     '2分钟平均风速': 'RdYlBu_r',
     '过去1小时降水量': {
-        'boundaries': [0, 0.1, 10, 25, 50, 100, 250, 400, 600, 1000, 1500, 2000],
-        'ticks': [0, 0.1, 10, 25, 50, 100, 250, 400, 600, 1000, 1500],
+        'boundaries': [0, 0.1, 2, 5, 10, 20, 50, 70, 100, 200, 300],
+        'ticks': [0, 0.1, 2, 5, 10, 20, 50, 70, 100, 200, 300],
         'colors': [
             '#FFFFFF',   # 0-0.1 白色
-            '#B7F7B7',   # 0.1-10 浅绿色
-            '#008000',   # 10-25 深绿色
-            "#34C3C3",   # 25-50 浅蓝色
-            '#00008B',   # 50-100 深蓝色
-            '#FF00FF',   # 100-250 品红色
-            "#6A4B2D",   # 250-400 深褐色
-            '#FFA500',   # 400-600 棕黄色
-            "#FF6F00",   # 600-1000 橘黄色
-            '#FF0000',   # 1000-1500 红色
-            "#B8662C"    # >1500 褐色
+            '#B7F7B7',   # 0.1-2 浅绿色
+            '#008000',   # 2-5 深绿色
+            "#34C3C3",   # 5-10 浅蓝色
+            '#00008B',   # 10-20 深蓝色
+            '#FF00FF',   # 20-50 品红色
+            "#6A4B2D",   # 50-70 深褐色
+            '#FFA500',   # 70-100 棕黄色
+            "#FF6F00",   # 100-200 橘黄色
+            '#FF0000',   # 200-300 红色
+            "#B8662C"    # >300 褐色
         ]
     }
 }
@@ -286,6 +301,10 @@ def create_export_images_task(
                     # 步骤 2: 现在才选择变量和时间
                     data_array_orig = ds_orig_spatial[nc_var].isel(time=0)
                     data_array_corr = ds_corr_spatial[nc_var].isel(time=0)
+                    # 相对湿度最大值为100, 如果预测出大于100的值置为100
+                    if element == "相对湿度":
+                        data_array_orig = data_array_orig.clip(max=100)
+                        data_array_corr = data_array_corr.clip(max=100)
 
                     # 【新增】步骤 3: 在裁剪前, 重命名维度为 'x' 和 'y'
                     # rioxarray.clip() 严格要求维度名为 'x' 和 'y'
@@ -459,7 +478,7 @@ def create_export_images_task(
                     # 绘制误差 (订正后 - 订正前, NaN区域将透明)
                     im3 = diff.plot.pcolormesh( # 【修改】imshow -> pcolormesh
                         ax=ax3,
-                        cmap=cmap,
+                        cmap="coolwarm",
                         vmin=-diff_abs_max,
                         vmax=diff_abs_max,
                         cbar_kwargs={'label': diff_label, 'orientation': 'horizontal', 'pad': 0.15}
