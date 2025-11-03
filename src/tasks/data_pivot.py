@@ -400,15 +400,26 @@ def create_export_images_task(
                         ticks = None
 
                     # 经纬度刻度格式化器
-                    def _deg_fmt(x, pos):
+                    def _deg_fmt_lon(x, pos):
                         try:
                             s = f"{x:.2f}"
                             if '.' in s:
                                 s = s.rstrip('0').rstrip('.')
                         except Exception:
                             s = str(x)
-                        return s + '°'
-                    degree_formatter = FuncFormatter(_deg_fmt)
+                        return s + '°E'
+
+                    def _deg_fmt_lat(x, pos):
+                        try:
+                            s = f"{x:.2f}"
+                            if '.' in s:
+                                s = s.rstrip('0').rstrip('.')
+                        except Exception:
+                            s = str(x)
+                        return s + '°N'
+
+                    lon_formatter = FuncFormatter(_deg_fmt_lon)
+                    lat_formatter = FuncFormatter(_deg_fmt_lat)
 
                     # 绘制订正前 (现在是掩膜后的数据, NaN区域将透明)
                     if boundaries is not None and norm is not None:
@@ -429,8 +440,8 @@ def create_export_images_task(
                             cbar_kwargs={'label': value_label, 'orientation': 'horizontal', 'pad': 0.15}
                         )
                     ax1.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
-                    ax1.xaxis.set_major_formatter(degree_formatter)
-                    ax1.yaxis.set_major_formatter(degree_formatter)
+                    ax1.xaxis.set_major_formatter(lon_formatter)
+                    ax1.yaxis.set_major_formatter(lat_formatter)
                     ax1.set_xlabel('Longitude') # 【新增】确保轴标签正确
                     ax1.set_ylabel('Latitude')  # 【新增】确保轴标签正确
                     # 叠加湖北省行政区划边界和地名 (使用原始的 province_gdf)
@@ -462,8 +473,8 @@ def create_export_images_task(
                             cbar_kwargs={'label': value_label, 'orientation': 'horizontal', 'pad': 0.15}
                         )
                     ax2.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
-                    ax2.xaxis.set_major_formatter(degree_formatter)
-                    ax2.yaxis.set_major_formatter(degree_formatter)
+                    ax2.xaxis.set_major_formatter(lon_formatter)
+                    ax2.yaxis.set_major_formatter(lat_formatter)
                     ax2.set_xlabel('Longitude') # 【新增】确保轴标签正确
                     ax2.set_ylabel('Latitude')  # 【新增】确保轴标签正确
                     if province_gdf is not None:
@@ -484,8 +495,8 @@ def create_export_images_task(
                         cbar_kwargs={'label': diff_label, 'orientation': 'horizontal', 'pad': 0.15}
                     )
                     ax3.set_title(f"误差 (订正后 - 订正前)\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
-                    ax3.xaxis.set_major_formatter(degree_formatter)
-                    ax3.yaxis.set_major_formatter(degree_formatter)
+                    ax3.xaxis.set_major_formatter(lon_formatter)
+                    ax3.yaxis.set_major_formatter(lat_formatter)
                     ax3.set_xlabel('Longitude') # 【新增】确保轴标签正确
                     ax3.set_ylabel('Latitude')  # 【新增】确保轴标签正确
                     if province_gdf is not None:
