@@ -1,7 +1,9 @@
 # src/tasks/data_pivot.py
 import json
+import cmaps
 import shutil
 import zipfile
+import rioxarray
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -27,9 +29,33 @@ plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 # 要素到单位的映射，用于在色标上显示单位
 ELEMENT_UNIT_MAPPING = {
     '温度': '℃',
-    '过去1小时降水量': 'mm',
     '相对湿度': '%',
-    '2分钟平均风速': 'm/s',
+    '过去1小时降水量': 'mm',
+    '2分钟平均风速': 'm/s'
+}
+
+# 要素到色标bar的映射, 降水bar的几个关键刻度设置:0.1, 2, 5, 10, 20, 50, 70, 100
+ELEMENT_BAR_MAPPING = {
+    '温度': 'RdBu_r',
+    '相对湿度': cmaps.OceanLakeLandSnow,
+    '2分钟平均风速': 'RdYlBu_r',
+    '过去1小时降水量': {
+        'boundaries': [0, 0.1, 10, 25, 50, 100, 250, 400, 600, 1000, 1500, 2000],
+        'ticks': [0, 0.1, 10, 25, 50, 100, 250, 400, 600, 1000, 1500],
+        'colors': [
+            '#FFFFFF',   # 0-0.1 白色
+            '#B7F7B7',   # 0.1-10 浅绿色
+            '#008000',   # 10-25 深绿色
+            "#34C3C3",   # 25-50 浅蓝色
+            '#00008B',   # 50-100 深蓝色
+            '#FF00FF',   # 100-250 品红色
+            "#6A4B2D",   # 250-400 深褐色
+            '#FFA500',   # 400-600 棕黄色
+            "#FF6F00",   # 600-1000 橘黄色
+            '#FF0000',   # 1000-1500 红色
+            "#B8662C"    # >1500 褐色
+        ]
+    }
 }
 
 
@@ -177,15 +203,7 @@ def create_export_images_task(
     [新任务] 查找订正后的.nc文件, 绘制成.png图像, 并压缩为.zip包。
     """
     db = SessionLocal()
-    try:
-        # 【修改】在函数开头导入 rioxarray，强制其在 xarray 之后注册
-        try:
-            import rioxarray
-            print("信息: 成功在函数内导入 'rioxarray'。")
-        except ImportError:
-            print("致命错误: 找不到 'rioxarray' 库。请 'pip install rioxarray'。")
-            rioxarray = None # 定义一个
-            
+    try:    
         # 1. 定义临时图片目录和最终zip输出路径
         temp_image_dir = Path("output/temp_data/export_images") / task_id
         temp_image_dir.mkdir(parents=True, exist_ok=True)
@@ -348,6 +366,19 @@ def create_export_images_task(
                     unit = ELEMENT_UNIT_MAPPING.get(element, '')
                     value_label = f"{element} ({unit})" if unit else element
                     diff_label = f"{element} (diff, {unit})" if unit else f"{element} (diff)"
+                    bar_cfg = ELEMENT_BAR_MAPPING.get(element, 'RdBu_r')
+                    # 兼容所有要素，统一cmap变量定义
+                    if isinstance(bar_cfg, dict):
+                        boundaries = bar_cfg['boundaries']
+                        colors = bar_cfg['colors']
+                        ticks = bar_cfg['ticks']
+                        cmap = matplotlib.colors.ListedColormap(colors)
+                        norm = matplotlib.colors.BoundaryNorm(boundaries, ncolors=len(colors), clip=True)
+                    else:
+                        cmap = bar_cfg
+                        boundaries = None
+                        norm = None
+                        ticks = None
 
                     # 经纬度刻度格式化器
                     def _deg_fmt(x, pos):
@@ -361,13 +392,23 @@ def create_export_images_task(
                     degree_formatter = FuncFormatter(_deg_fmt)
 
                     # 绘制订正前 (现在是掩膜后的数据, NaN区域将透明)
-                    im1 = data_array_orig.plot.pcolormesh( # 【修改】imshow -> pcolormesh
-                        ax=ax1,
-                        cmap='coolwarm',
-                        vmin=vmin,
-                        vmax=vmax,
-                        cbar_kwargs={'label': value_label}
-                    )
+                    if boundaries is not None and norm is not None:
+                        im1 = data_array_orig.plot.pcolormesh(
+                            ax=ax1,
+                            cmap=cmap,
+                            norm=norm,
+                            vmin=min(boundaries),
+                            vmax=max(boundaries),
+                            cbar_kwargs={'label': value_label, 'orientation': 'horizontal', 'pad': 0.15, 'ticks': ticks}
+                        )
+                    else:
+                        im1 = data_array_orig.plot.pcolormesh(
+                            ax=ax1,
+                            cmap=cmap,
+                            vmin=vmin,
+                            vmax=vmax,
+                            cbar_kwargs={'label': value_label, 'orientation': 'horizontal', 'pad': 0.15}
+                        )
                     ax1.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax1.xaxis.set_major_formatter(degree_formatter)
                     ax1.yaxis.set_major_formatter(degree_formatter)
@@ -384,13 +425,23 @@ def create_export_images_task(
                                     ax1.text(centroid.x, centroid.y, name, fontsize=8, color='black', alpha=0.5, ha='center', va='center', zorder=10)
 
                     # 绘制订正后 (现在是掩膜后的数据, NaN区域将透明)
-                    im2 = data_array_corr.plot.pcolormesh( # 【修改】imshow -> pcolormesh
-                        ax=ax2,
-                        cmap='coolwarm',
-                        vmin=vmin,
-                        vmax=vmax,
-                        cbar_kwargs={'label': value_label}
-                    )
+                    if boundaries is not None and norm is not None:
+                        im2 = data_array_corr.plot.pcolormesh(
+                            ax=ax2,
+                            cmap=cmap,
+                            norm=norm,
+                            vmin=min(boundaries),
+                            vmax=max(boundaries),
+                            cbar_kwargs={'label': value_label, 'orientation': 'horizontal', 'pad': 0.15, 'ticks': ticks}
+                        )
+                    else:
+                        im2 = data_array_corr.plot.pcolormesh(
+                            ax=ax2,
+                            cmap=cmap,
+                            vmin=vmin,
+                            vmax=vmax,
+                            cbar_kwargs={'label': value_label, 'orientation': 'horizontal', 'pad': 0.15}
+                        )
                     ax2.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax2.xaxis.set_major_formatter(degree_formatter)
                     ax2.yaxis.set_major_formatter(degree_formatter)
@@ -408,10 +459,10 @@ def create_export_images_task(
                     # 绘制误差 (订正后 - 订正前, NaN区域将透明)
                     im3 = diff.plot.pcolormesh( # 【修改】imshow -> pcolormesh
                         ax=ax3,
-                        cmap='RdBu_r',
+                        cmap=cmap,
                         vmin=-diff_abs_max,
                         vmax=diff_abs_max,
-                        cbar_kwargs={'label': diff_label}
+                        cbar_kwargs={'label': diff_label, 'orientation': 'horizontal', 'pad': 0.15}
                     )
                     ax3.set_title(f"误差 (订正后 - 订正前)\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax3.xaxis.set_major_formatter(degree_formatter)
@@ -434,16 +485,13 @@ def create_export_images_task(
                     img_path = temp_image_dir / img_filename
                     
                     # 保存图像
-                    fig.savefig(img_path, dpi=100, bbox_inches='tight')
+                    fig.savefig(img_path, dpi=300, bbox_inches='tight')
                     
                     # 关闭图像以释放内存
                     plt.close(fig)
                     
                 files_found += 1
                 
-            except FileNotFoundError:
-                print(f"警告: 未找到 {ts} 的订正文件, 已跳过")
-                pass
             except Exception as plot_e:
                 print(f"警告: 绘制 {ts} 时出错: {plot_e}, 已跳过")
                 plt.close('all') # 确保关闭所有可能打开的图像
