@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     
     STATION_INFO_PATH: str = str(config.get("station_info_path", ""))
     DEM_DATA_PATH: str = str(config.get("dem_data_path", ""))
+    HUBEI_MAP_PATH: str = str(config.get("hubei_map_path", ""))
 
     MODEL_CONFIG_DIR: str = str(config.get("model_config_dir", ""))
     MODEL_OUTPUT_DIR: str = str(config.get("model_output_dir", ""))

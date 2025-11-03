@@ -3,6 +3,7 @@
     "grid_data_dir": "data\\grid",
     "station_info_path": "data\\station\\湖北省82个国家气象站-站点信息\\Hubei.82.Stations.Information.csv",
     "dem_data_path": "data\\dem\\hubei_terrain.nc",
+    "hubei_map_path": "data/dem/湖北省行政区划.geojson",
     "model_config_dir": "config/models",
     "model_output_dir": "output/models",
     "correction_output_dir": "output/correction",

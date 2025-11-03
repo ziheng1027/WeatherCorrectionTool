@@ -8,6 +8,7 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+import geopandas as gpd
 from pathlib import Path
 from typing import List
 from datetime import datetime
@@ -191,6 +192,16 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
         
         crud.update_task_status(db, task_id, "PROCESSING", 0, f"准备生成 {total_files} 张图像...")
 
+        # 读取湖北省行政区划边界（只读一次，避免重复IO）
+        province_gdf = None
+        province_geo_path = Path(settings.HUBEI_MAP_PATH)
+        if province_geo_path.exists():
+            try:
+                province_gdf = gpd.read_file(province_geo_path)
+            except Exception as geo_e:
+                print(f"读取行政区划失败: {geo_e}")
+                province_gdf = None
+
         # 3. 循环查找、绘图、保存
         for i, ts in enumerate(timestamps):
             try:
@@ -246,7 +257,7 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
                     degree_formatter = FuncFormatter(_deg_fmt)
 
                     # 绘制订正前
-                    data_array_orig.plot.imshow(
+                    im1 = data_array_orig.plot.imshow(
                         ax=ax1,
                         cmap='coolwarm',
                         vmin=vmin,
@@ -256,9 +267,19 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
                     ax1.set_title(f"订正前 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax1.xaxis.set_major_formatter(degree_formatter)
                     ax1.yaxis.set_major_formatter(degree_formatter)
+                    # 叠加湖北省行政区划边界和地名
+                    if province_gdf is not None:
+                        province_gdf.boundary.plot(ax=ax1, color='gray', linewidth=1)
+                        # 在每个行政区中心点显示地名
+                        for idx, row in province_gdf.iterrows():
+                            if row.geometry is not None and hasattr(row.geometry, 'centroid'):
+                                centroid = row.geometry.centroid
+                                name = row.get('name', row.get('NAME', None))
+                                if name:
+                                    ax1.text(centroid.x, centroid.y, name, fontsize=8, color='black', alpha=0.5, ha='center', va='center', zorder=10)
 
                     # 绘制订正后
-                    data_array_corr.plot.imshow(
+                    im2 = data_array_corr.plot.imshow(
                         ax=ax2,
                         cmap='coolwarm',
                         vmin=vmin,
@@ -268,9 +289,17 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
                     ax2.set_title(f"订正后 {element}\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax2.xaxis.set_major_formatter(degree_formatter)
                     ax2.yaxis.set_major_formatter(degree_formatter)
+                    if province_gdf is not None:
+                        province_gdf.boundary.plot(ax=ax2, color='gray', linewidth=1)
+                        for idx, row in province_gdf.iterrows():
+                            if row.geometry is not None and hasattr(row.geometry, 'centroid'):
+                                centroid = row.geometry.centroid
+                                name = row.get('name', row.get('NAME', None))
+                                if name:
+                                    ax2.text(centroid.x, centroid.y, name, fontsize=8, color='black', alpha=0.5, ha='center', va='center', zorder=10)
 
                     # 绘制误差 (订正后 - 订正前)，使用对称的发散色标
-                    diff.plot.imshow(
+                    im3 = diff.plot.imshow(
                         ax=ax3,
                         cmap='RdBu_r',
                         vmin=-diff_abs_max,
@@ -280,6 +309,14 @@ def create_export_images_task(task_id: str, element: str, start_time: datetime, 
                     ax3.set_title(f"误差 (订正后 - 订正前)\n{ts.strftime('%Y-%m-%d %H:%M')}", fontsize=14)
                     ax3.xaxis.set_major_formatter(degree_formatter)
                     ax3.yaxis.set_major_formatter(degree_formatter)
+                    if province_gdf is not None:
+                        province_gdf.boundary.plot(ax=ax3, color='gray', linewidth=1)
+                        for idx, row in province_gdf.iterrows():
+                            if row.geometry is not None and hasattr(row.geometry, 'centroid'):
+                                centroid = row.geometry.centroid
+                                name = row.get('name', row.get('NAME', None))
+                                if name:
+                                    ax3.text(centroid.x, centroid.y, name, fontsize=8, color='black', alpha=0.7, ha='center', va='center', zorder=10)
 
                     plt.tight_layout()  # 自动调整子图布局
 
