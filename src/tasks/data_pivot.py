@@ -3,16 +3,15 @@ import json
 import shutil
 import zipfile
 import matplotlib
+import numpy as np
 import pandas as pd
 import xarray as xr
-import numpy as np
-import rioxarray
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 import geopandas as gpd
+import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import List
 from datetime import datetime
+from matplotlib.ticker import FuncFormatter
 from ..db import crud
 from ..db.database import SessionLocal
 from ..core.config import settings
