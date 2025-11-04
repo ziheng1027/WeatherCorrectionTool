@@ -81,7 +81,7 @@ def train(task_id: str, request: ModelTrainRequest):
                 print(f"|--> [Task ID: {activate_subtask_id}] 正在保存模型、训练损失和整体指标...")
                 crud.update_task_status(db, activate_subtask_id, "PROCESSING", 95.0, "正在保存模型、训练损失以及整体指标...")
 
-                save_model(model, request.model, element, request.start_year, request.end_year, request.season, activate_subtask_id)
+                save_model(model, request.model, element, request.start_year, request.end_year, request.season, request.split_method, activate_subtask_id)
                 save_losses(train_losses, test_losses, request.model, element, request.start_year, request.end_year, request.season, activate_subtask_id)
                 save_metrics_in_testset_all(metrics_true, metrics_pred, request.model, element, request.start_year, request.end_year, request.season, activate_subtask_id)
                 

@@ -90,13 +90,13 @@ def safe_open_mfdataset(grid_files, **kwargs):
 
 def save_model(
         model: object, model_name: str, element: str, start_year: str, 
-        end_year: str, season: str, task_id: str
+        end_year: str, season: str, split_method: str, task_id: str
 ):
     """保存模型"""
     model_name = model_name.lower()
     checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name)
     os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_id={task_id}.ckpt"
+    checkpoint_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_{split_method}_id={task_id}.ckpt"
     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
     joblib.dump(model, checkpoint_path)
     print(f"模型已保存到: {checkpoint_path}\n")
