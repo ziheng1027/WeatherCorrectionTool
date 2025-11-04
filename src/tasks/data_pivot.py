@@ -19,7 +19,7 @@ from ..core.config import settings
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING, get_name_to_id_mapping
 from ..core.data_pivot import bulid_feature_for_pivot
 from ..utils.file_io import load_model, find_nc_file_for_timestamp, find_corrected_nc_file_for_timestamp
-from ..utils.metrics import cal_metrics
+from ..utils.metrics import cal_metrics, cal_comprehensive_score
 
 matplotlib.use('Agg')  # 使用 'Agg' 后端, 适用于非GUI环境的后台任务
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
@@ -116,6 +116,14 @@ def evaluate_model(task_id: str, element: str, station_name: str, start_time: da
             all_predictions.append({"station_name": station_name, "model_name": model_name, "pred_values": pred_y.tolist()})
             all_metrics.append({"station_name": station_name, "model_name": model_name, "metrics": cal_metrics(df_y, pred_y)})
             print(f"第 {i + 1} 个模型: {model_name} 预测完成")
+        
+        # 计算综合评分
+        try:
+            all_metrics_with_S = cal_comprehensive_score(all_metrics)
+        except Exception as e:
+            print(f"计算综合评分时出错: {e}")
+            all_metrics_with_S = all_metrics    # 如果失败, 使用原指标
+
         # 组装并保存最终结果
         timestamps = pd.to_datetime(df_base["timestamp"])  # 转换为datetime对象
         final_results = {
@@ -123,7 +131,7 @@ def evaluate_model(task_id: str, element: str, station_name: str, start_time: da
             "station_values": df_y.tolist(),
             "grid_values": df_X[f"{element_db_column}_grid"].tolist(),
             "pred_values": all_predictions,
-            "metrics": all_metrics,
+            "metrics": all_metrics_with_S,
         }
         # 保存结果到本地, 以便api在任务完成后读取数据
         output_dir = Path(f"output/pivot_model_results/{element}")
