@@ -126,13 +126,13 @@ def save_losses(
 
 def save_metrics_in_testset_all(
         metrics_true: dict, metrics_pred: dict, model_name: str, element: str,
-        start_year: str, end_year: str, season: str, task_id: str
+        start_year: str, end_year: str, season: str, split_method: str, task_id: str
 ):
     """保存测试集的整体指标(所有站点均值)"""
     model_name = model_name.lower()
     metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name, "overall")
     os.makedirs(metrics_dir, exist_ok=True)
-    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_{task_id}.json"
+    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_{split_method}_{task_id}.json"
     metrics_path = os.path.join(metrics_dir, metrics_file_name)
     with open(metrics_path, 'w') as f:
         json.dump({
@@ -143,13 +143,13 @@ def save_metrics_in_testset_all(
 
 def save_metrics_in_testset_station(
         metrics_df: pd.DataFrame, model_name: str, element: str,
-        start_year: str, end_year: str, season: str
+        start_year: str, end_year: str, season: str, split_method: str 
 ):
     """保存测试集的站点指标(每个站点的均值)"""
     model_name = model_name.lower()
     metrics_dir = os.path.join(settings.METRIC_OUTPUT_DIR, model_name, "station")
     os.makedirs(metrics_dir, exist_ok=True)
-    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_testset-station.csv"
+    metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_{split_method}_testset-station.csv"
     metrics_path = os.path.join(metrics_dir, metrics_file_name)
     metrics_df.to_csv(metrics_path, index=False)
     print(f"测试集站点指标已保存到: {metrics_path}\n")
