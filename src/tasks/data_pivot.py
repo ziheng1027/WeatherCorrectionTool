@@ -572,6 +572,187 @@ def create_export_images_task(
                 print(f"临时图片目录已删除: {temp_image_dir}")
         except OSError as e:
             print(f"删除临时图片目录 {temp_image_dir} 失败: {e}")
-        
+
+        db.close()
+
+
+def evaluate_models_by_metrics(task_id: str, element: str, season: str, test_set_values: List[str]):
+    """根据要素、季节和测试集值筛选模型并计算综合评分[后台任务]"""
+    db = SessionLocal()
+    try:
+        # 任务初始化
+        crud.update_task_status(db, task_id, "PROCESSING", 0.0, "任务初始化, 准备筛选模型...")
+
+        # 获取所有模型记录
+        all_records = crud.get_all_model_records(db)
+        if not all_records:
+            crud.update_task_status(db, task_id, "FAILED", 0.0, "数据库中没有任何模型记录")
+            raise ValueError("数据库中没有任何模型记录")
+
+        crud.update_task_status(db, task_id, "PROCESSING", 20.0, f"找到 {len(all_records)} 个模型记录, 开始筛选...")
+
+        # 筛选符合条件的模型记录
+        filtered_records = []
+        for record in all_records:
+            # 检查要素是否匹配
+            if record.element != element:
+                continue
+
+            # 检查训练参数中的季节和测试集值
+            train_params = record.get_train_params()
+            record_season = train_params.get("season", "")
+            record_test_set_values = train_params.get("test_set_values", [])
+
+            # 季节匹配检查: 指定季节 -> 匹配该季节 + 全年模型
+            if season != "全年":
+                # 指定具体季节时, 匹配该季节和全年模型
+                if record_season not in [season, "全年"]:
+                    continue
+            else:
+                # 指定全年时, 只匹配全年模型
+                if record_season != "全年":
+                    continue
+
+            # 测试集值匹配检查 (需要完全匹配)
+            if set(record_test_set_values) != set(test_set_values):
+                continue
+
+            filtered_records.append(record)
+
+        if not filtered_records:
+            crud.update_task_status(db, task_id, "FAILED", 0.0, f"没有找到符合条件的模型记录: element={element}, season={season}, test_set_values={test_set_values}")
+            raise ValueError(f"没有找到符合条件的模型记录: element={element}, season={season}, test_set_values={test_set_values}")
+
+        crud.update_task_status(db, task_id, "PROCESSING", 40.0, f"筛选出 {len(filtered_records)} 个符合条件的模型, 开始读取指标...")
+
+        # 读取每个模型的整体指标
+        all_metrics = []
+        for i, record in enumerate(filtered_records):
+            progress = 40 + (((i + 1) / len(filtered_records)) * 40)
+            progress_text = f"正在读取第 {i + 1} 个模型的指标: {record.model_name}"
+            crud.update_task_status(db, task_id, "PROCESSING", progress, progress_text)
+
+            # 构建指标文件路径
+            train_params = record.get_train_params()
+            model_name = train_params.get("model", "").lower()
+            start_year = train_params.get("start_year", "")
+            end_year = train_params.get("end_year", "")
+
+            # 根据模型记录信息构建指标文件路径
+            metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{record_season}_{record.task_id}.json"
+            metrics_dir = Path(settings.METRIC_OUTPUT_DIR) / model_name / "overall"
+            metrics_path = metrics_dir / metrics_file_name
+
+            if not metrics_path.exists():
+                print(f"警告: 找不到指标文件 {metrics_path}, 跳过该模型")
+                continue
+
+            # 读取指标文件
+            try:
+                with open(metrics_path, 'r', encoding='utf-8') as f:
+                    metrics_data = json.load(f)
+
+                # 使用测试集预测指标 (testset_pred)
+                metrics = metrics_data.get("testset_pred", {})
+
+                # 添加到结果列表
+                all_metrics.append({
+                    "model_name": record.model_name,
+                    "model_id": record.model_id,
+                    "task_id": record.task_id,
+                    "season": record_season,
+                    "metrics": metrics
+                })
+
+                print(f"成功读取模型 {record.model_name} 的指标")
+
+            except Exception as e:
+                print(f"读取模型 {record.model_name} 的指标文件失败: {e}")
+                continue
+
+        if not all_metrics:
+            crud.update_task_status(db, task_id, "FAILED", 0.0, "所有模型的指标文件读取失败")
+            raise ValueError("所有模型的指标文件读取失败")
+
+        # 添加原始指标 (从第一个模型的testset_true获取)
+        if all_metrics:
+            try:
+                # 获取第一个模型的指标文件路径
+                first_record = filtered_records[0]
+                train_params = first_record.get_train_params()
+                model_name = train_params.get("model", "").lower()
+                start_year = train_params.get("start_year", "")
+                end_year = train_params.get("end_year", "")
+                record_season = train_params.get("season", "")
+
+                metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{record_season}_{first_record.task_id}.json"
+                metrics_dir = Path(settings.METRIC_OUTPUT_DIR) / model_name / "overall"
+                metrics_path = metrics_dir / metrics_file_name
+
+                if metrics_path.exists():
+                    with open(metrics_path, 'r', encoding='utf-8') as f:
+                        metrics_data = json.load(f)
+
+                    # 使用测试集真实指标 (testset_true)
+                    original_metrics = metrics_data.get("testset_true", {})
+
+                    # 添加原始指标到结果列表
+                    all_metrics.insert(0, {
+                        "model_name": "原始数据",
+                        "model_id": "original_data",
+                        "task_id": "original",
+                        "season": "原始",
+                        "metrics": original_metrics
+                    })
+
+                    print("成功添加原始数据指标")
+
+            except Exception as e:
+                print(f"读取原始数据指标失败: {e}")
+
+        crud.update_task_status(db, task_id, "PROCESSING", 85.0, f"成功读取 {len(all_metrics)} 个模型的指标, 开始计算综合评分...")
+
+        # 计算综合评分
+        try:
+            all_metrics_with_S = cal_comprehensive_score(all_metrics)
+        except Exception as e:
+            print(f"计算综合评分时出错: {e}")
+            all_metrics_with_S = all_metrics  # 如果失败, 使用原指标
+
+        # 组装最终结果
+        final_results = {
+            "filter_conditions": {
+                "element": element,
+                "season": season,
+                "test_set_values": test_set_values
+            },
+            "total_models_found": len(filtered_records),
+            "total_metrics_loaded": len(all_metrics),
+            "ranked_models": all_metrics_with_S
+        }
+
+        # 保存结果到本地
+        output_dir = Path(f"output/pivot_model_ranking/{element}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{element}_{season}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(final_results, f, ensure_ascii=False, indent=4)
+
+        # 更新任务状态
+        task = crud.get_task_by_id(db, task_id)
+        if task:
+            params = task.get_params()
+            params["result_path"] = str(output_path)
+            task.set_params(params)
+            db.add(task)
+            crud.update_task_status(db, task_id, "COMPLETED", 100.0, f"分析完成, 共对 {len(all_metrics_with_S)} 个模型进行排序")
+        else:
+            raise ValueError("找不到任务记录以保存结果路径")
+
+    except Exception as e:
+        error_msg = f"任务执行失败: {e}"
+        print(error_msg)
+        crud.update_task_status(db, task_id, "FAILED", 0.0, error_msg)
+    finally:
         db.close()
 

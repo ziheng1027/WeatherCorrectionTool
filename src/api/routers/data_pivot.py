@@ -14,7 +14,7 @@ from ...core import schemas
 from ...core.config import settings
 from ...core.data_mapping import ELEMENT_TO_DB_MAPPING, get_name_to_id_mapping
 from ...core.data_pivot import get_grid_data_for_heatmap, get_correct_grid_time_series_for_coord
-from ...tasks.data_pivot import evaluate_model, create_export_zip_task, create_export_images_task
+from ...tasks.data_pivot import evaluate_model, create_export_zip_task, create_export_images_task, evaluate_models_by_metrics
 from ...utils.file_io import find_corrected_nc_file_for_timestamp
 
 
@@ -444,4 +444,78 @@ def download_export_file(task_id: str, background_tasks: BackgroundTasks, db: Se
         filename=file_name,
         media_type='application/zip'
     )
+
+
+@router.post("/model-ranking", response_model=schemas.TaskCreationResponse, summary="启动数据透视-模型排序任务")
+def create_model_ranking_task(
+    request: schemas.PivotModelRankingRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """启动一个模型排序后台任务"""
+    # 检查是否有同类型的任务正在运行
+    processing_task_id = crud.is_task_type_processing(db, "PivotModelRanking")
+    if processing_task_id:
+        return schemas.TaskCreationResponse(
+            message="已有同类型任务正在进行中，请等待其完成后再试",
+            task_id=processing_task_id
+        )
+
+    task_id = str(uuid.uuid4())
+    task_name = f"数据透视-模型排序_{request.element}_{request.season}"
+
+    # 将请求参数转换为可序列化存储的字典
+    params = request.model_dump()
+
+    # 在数据库中创建任务记录
+    crud.create_task(db, task_id, task_name, "PivotModelRanking", params)
+
+    # 将实际耗时的操作添加到后台任务队列
+    background_tasks.add_task(
+        evaluate_models_by_metrics,
+        task_id=task_id,
+        element=request.element,
+        season=request.season,
+        test_set_values=request.test_set_values
+    )
+
+    return {"message": "数据透视-模型排序任务已启动", "task_id": task_id}
+
+
+@router.get("/model-ranking/status/{task_id}", response_model=schemas.PivotModelRankingStatusResponse, summary="查询数据透视-模型排序任务状态")
+def get_model_ranking_status(task_id: str, db: Session = Depends(get_db)):
+    """
+    查询模型排序任务的状态、进度和最终结果。
+
+    前端应轮询此接口以获取最新状态。当 status 为 "COMPLETED" 时，`results` 字段将包含排序结果。
+    """
+    task = crud.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务ID不存在")
+
+    response_data = {
+        "task_id": task.task_id,
+        "status": task.status,
+        "progress": task.cur_progress,
+        "progress_text": task.progress_text,
+        "results": None
+    }
+
+    if task.status == "COMPLETED":
+        params = task.get_params()
+        result_path_str = params.get("result_path")
+        if not result_path_str:
+             raise HTTPException(status_code=404, detail="任务成功但结果文件路径未找到")
+
+        result_path = Path(result_path_str)
+        if result_path.exists():
+            with open(result_path, 'r', encoding='utf-8') as f:
+                results_json = json.load(f)
+                response_data["results"] = results_json
+        else:
+            # 如果结果文件丢失，更新任务状态为失败
+            crud.update_task_status(db, task.task_id, "FAILED", task.cur_progress, "任务失败：结果文件已丢失")
+            raise HTTPException(status_code=404, detail="任务结果文件已丢失")
+
+    return response_data
 

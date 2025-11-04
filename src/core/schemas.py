@@ -312,3 +312,36 @@ class DataExportStatusResponse(BaseModel):
     progress: float
     progress_text: str
     download_url: Optional[str] = None # 任务完成后, 这里会提供下载链接
+
+
+class PivotModelRankingRequest(BaseModel):
+    """用于接收模型排序请求的请求体模型"""
+    element: AVAILABLE_ELEMENTS
+    season: str = Field(..., description="季节, 如: 全年, 春季, 夏季, 秋季, 冬季")
+    test_set_values: List[str] = Field(..., description="测试集值列表, 如年份列表或站点列表")
+
+
+class RankedModel(BaseModel):
+    """排序后的模型信息"""
+    model_name: str
+    model_id: str
+    task_id: str
+    season: str = Field(..., description="模型训练的季节, 如: 全年, 春季, 夏季, 秋季, 冬季, 原始")
+    metrics: Dict[str, Any]
+
+
+class PivotModelRankingResponse(BaseModel):
+    """用于返回模型排序结果的响应模型"""
+    filter_conditions: Dict[str, Any]
+    total_models_found: int
+    total_metrics_loaded: int
+    ranked_models: List[RankedModel]
+
+
+class PivotModelRankingStatusResponse(BaseModel):
+    """用于返回模型排序任务状态和结果的响应模型"""
+    task_id: str
+    status: str
+    progress: float
+    progress_text: str
+    results: Optional[PivotModelRankingResponse] = None
