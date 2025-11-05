@@ -208,9 +208,10 @@ def save_model_record(task_id: str, db: Session = Depends(get_db)):
     start_year = params.get("start_year")
     end_year = params.get("end_year")
     season = params.get("season")
+    split_method = params.get("split_method")
     # 构建模型路径
     checkpoint_dir = os.path.join(settings.MODEL_OUTPUT_DIR, model_name.lower())
-    checkpoint_name = f"{model_name.lower()}_{element}_{start_year}_{end_year}_{season}_id={task_id}.ckpt"
+    checkpoint_name = f"{model_name.lower()}_{element}_{start_year}_{end_year}_{season}_{split_method}_id={task_id}.ckpt"
     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
     # 获取当前的模型参数
     model_config_path = get_model_config_path(model_name, element)
@@ -228,6 +229,7 @@ def save_model_record(task_id: str, db: Session = Depends(get_db)):
     
     crud.create_model_record(db, model_info)
     return schemas.MessageResponse(message="模型记录已保存")
+
 
 @router.delete("/delete-model-record/{task_id}", response_model=schemas.MessageResponse, summary="[新] 通过TaskID删除一条模型记录及其关联的训练任务")
 def delete_model_record_by_task_id(task_id: str, db: Session = Depends(get_db)):
