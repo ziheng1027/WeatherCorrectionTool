@@ -108,7 +108,7 @@ def load_model(model_path):
 
 def save_losses(
         train_losses: list, test_losses: list, model_name: str, element: str,
-        start_year: str, end_year: str, season: str, task_id: str
+        start_year: str, end_year: str, season: str, split_method: str, task_id: str
 ):
     """保存训练和测试损失"""
     model_name = model_name.lower()
@@ -119,7 +119,7 @@ def save_losses(
     })
     losses_dir = os.path.join(settings.LOSSES_OUTPUT_DIR, model_name)
     os.makedirs(losses_dir, exist_ok=True)
-    losses_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_{task_id}.csv"
+    losses_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_{split_method}_{task_id}.csv"
     losses_path = os.path.join(losses_dir, losses_file_name)
     losses_df.to_csv(losses_path, index=False)
     print(f"训练损失已保存到: {losses_path}\n")

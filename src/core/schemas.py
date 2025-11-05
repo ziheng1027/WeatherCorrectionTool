@@ -167,6 +167,7 @@ class ModelInfoRequest(BaseModel):
     start_year: str = Field(..., description="数据集的起始年份")
     end_year: str = Field(..., description="数据集的结束年份")
     season: str = Field(..., description="构建哪个季节的数据集?")
+    split_method: str = Field(..., description="数据集划分方法")
 
 
 class LossesResponse(BaseModel):

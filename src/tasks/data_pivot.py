@@ -575,7 +575,6 @@ def create_export_images_task(
 
         db.close()
 
-
 def evaluate_models_by_metrics(task_id: str, element: str, season: str, test_set_values: List[str]):
     """根据要素、季节和测试集值筛选模型并计算综合评分[后台任务]"""
     db = SessionLocal()
@@ -601,6 +600,7 @@ def evaluate_models_by_metrics(task_id: str, element: str, season: str, test_set
             # 检查训练参数中的季节和测试集值
             train_params = record.get_train_params()
             record_season = train_params.get("season", "")
+            record_split_method = train_params.get("split_method", "")
             record_test_set_values = train_params.get("test_set_values", [])
 
             # 季节匹配检查: 指定季节 -> 匹配该季节 + 全年模型
@@ -639,7 +639,7 @@ def evaluate_models_by_metrics(task_id: str, element: str, season: str, test_set
             end_year = train_params.get("end_year", "")
 
             # 根据模型记录信息构建指标文件路径
-            metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{record_season}_{record.task_id}.json"
+            metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{record_season}_{record_split_method}_{record.task_id}.json"
             metrics_dir = Path(settings.METRIC_OUTPUT_DIR) / model_name / "overall"
             metrics_path = metrics_dir / metrics_file_name
 
@@ -701,7 +701,7 @@ def evaluate_models_by_metrics(task_id: str, element: str, season: str, test_set
                         "model_name": "原始数据",
                         "model_id": "original_data",
                         "task_id": "original",
-                        "season": "原始",
+                        "season":  record_season,
                         "metrics": original_metrics
                     })
 
