@@ -194,6 +194,7 @@ class MetricsResponse(BaseModel):
 
 class ModelRecordResponse(BaseModel):
     """用于返回模型记录的响应模型"""
+    task_id: str
     model_name: str
     element: AVAILABLE_ELEMENTS
     model_path: str

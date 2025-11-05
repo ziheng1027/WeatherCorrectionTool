@@ -23,6 +23,7 @@ def get_models(db: Session = Depends(get_db)):
     for record in model_records:
         response_models.append(
             schemas.ModelRecordResponse(
+                task_id=record.task_id,
                 element=record.element,
                 model_name=record.model_name,
                 model_path=record.model_path,
