@@ -637,9 +637,11 @@ def evaluate_models_by_metrics(task_id: str, element: str, season: str, test_set
             model_name = train_params.get("model", "").lower()
             start_year = train_params.get("start_year", "")
             end_year = train_params.get("end_year", "")
+            season = train_params.get("season", "")
+            split_method = train_params.get("split_method", "")
 
             # 根据模型记录信息构建指标文件路径
-            metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{record_season}_{record_split_method}_{record.task_id}.json"
+            metrics_file_name = f"{model_name}_{element}_{start_year}_{end_year}_{season}_{split_method}_{record.task_id}.json"
             metrics_dir = Path(settings.METRIC_OUTPUT_DIR) / model_name / "overall"
             metrics_path = metrics_dir / metrics_file_name
 
