@@ -212,3 +212,4 @@ output
 temp
 .claude
 claude.md
+*.docx
