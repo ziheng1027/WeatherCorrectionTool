@@ -1,7 +1,6 @@
 # src/tasks/data_preview.py
 import zipfile
 import shutil
-import rioxarray
 import matplotlib
 import pandas as pd
 import xarray as xr
