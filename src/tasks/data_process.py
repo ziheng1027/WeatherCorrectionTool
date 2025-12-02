@@ -6,8 +6,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import multiprocessing as mp
 from time import time, sleep
-from typing import List
 from pathlib import Path
+from typing import List
 from sqlalchemy.orm import Session
 from ..db.database import SessionLocal
 from ..db.db_models import TaskProgress

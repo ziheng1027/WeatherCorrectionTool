@@ -81,8 +81,7 @@ def cal_comprehensive_score(metrics_list):
     :param metrics_list: 指标列表, 每一项是一个字典, 包含'model_name'和'metrics'
     :return: 追加综合得分"S"键的指标列表
     """
-    if not metrics_list or len(metrics_list) <2:
-        print("警告: 综合指数归一化至少需要两个模型进行计算")
+    if not metrics_list:
         return []
     # 将字符串转换为浮点数并计算|MRE|和|MBE|
     parsed_metrics = []
