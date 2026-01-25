@@ -14,9 +14,9 @@ from ..core.data_mapping import cst_to_utc, NC_TO_DB_MAPPING, ELEMENT_TO_DB_MAPP
 
 
 NOISE_CONFIG = {
-    "温度": 0.4,
-    "相对湿度": 2.0,
-    "2分钟平均风速": 0.3
+    "温度": {"scale": 0.4, "bias": -0.05},
+    "相对湿度": {"scale": 2.0, "bias": -0.08},
+    "2分钟平均风速": {"scale": 0.3, "bias": 0.05}
 }
 
 def clean_station_data(df: pd.DataFrame, element: str) -> pd.DataFrame:
@@ -86,7 +86,14 @@ def extract_grid_values_for_stations(ds, var_grid: str, station_coords: dict, ye
 def add_noise_to_grid_data(df: pd.DataFrame, element: str, seed: Optional[int] = None) -> pd.DataFrame:
     """为格点数据添加高斯噪声"""
     if element in NOISE_CONFIG:
-        scale = NOISE_CONFIG[element]
+        config = NOISE_CONFIG[element]
+        # 如果配置是字典，提取 scale 和 bias；如果是数字，默认 bias 为 0
+        if isinstance(config, dict):
+            scale = config.get("scale", 0.01)
+            bias = config.get("bias", 0.01)
+        else:
+            scale = config
+            bias = 0.0
         db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
         grid_col = f"{db_column_name}_grid"
         
@@ -94,9 +101,9 @@ def add_noise_to_grid_data(df: pd.DataFrame, element: str, seed: Optional[int] =
             # 使用独立且确定的随机数生成器
             if seed is not None:
                 rng = np.random.default_rng(seed)
-                noise = rng.normal(loc=0.0, scale=scale, size=len(df))
+                noise = rng.normal(loc=bias, scale=scale, size=len(df)) 
             else:
-                noise = np.random.normal(loc=0.0, scale=scale, size=len(df))
+                noise = np.random.normal(loc=bias, scale=scale, size=len(df))
                 
             # 将噪声叠加到格点值上
             df[grid_col] = df[grid_col] + noise
