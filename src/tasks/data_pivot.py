@@ -72,10 +72,13 @@ ELEMENT_BAR_MAPPING = {
     }
 }
 
+# 定义使用残差模式的要素列表
+RESIDUAL_ELEMENTS = ["温度", "相对湿度", "过去1小时降水量"] 
 
 def evaluate_model(task_id: str, element: str, station_name: str, start_time: datetime, end_time: datetime, model_paths: List[str]):
     """模型评估分析[后台任务]"""
     db = SessionLocal()
+    
     try:
         # 任务初始化
         crud.update_task_status(db, task_id, "PROCESSING", 0.0, "任务初始化, 准备获取数据...")
@@ -111,7 +114,12 @@ def evaluate_model(task_id: str, element: str, station_name: str, start_time: da
             # 加载模型
             model = load_model(model_path)
             # 预测
-            pred_y = model.predict(df_X)
+            pred_raw = model.predict(df_X)
+            # 判断是否需要还原残差
+            if element in RESIDUAL_ELEMENTS:
+                pred_y = pred_raw + np.array(grid_values)
+            else:
+                pred_y = pred_raw
             # 添加到结果列表
             all_predictions.append({"station_name": station_name, "model_name": model_name, "pred_values": pred_y.tolist()})
             all_metrics.append({"station_name": station_name, "model_name": model_name, "metrics": cal_metrics(df_y, pred_y)})

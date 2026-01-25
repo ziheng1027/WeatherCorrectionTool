@@ -19,7 +19,7 @@ from ..core.config import settings, STOP_EVENT
 from ..core.data_mapping import ELEMENT_TO_DB_MAPPING, ELEMENT_TO_NC_MAPPING
 from ..core.data_process import (
     clean_station_data, extract_grid_values_for_stations,
-    merge_sg_df, import_proc_data_from_temp_files
+    merge_sg_df, import_proc_data_from_temp_files, add_noise_to_grid_data
 )
 from ..utils.file_io import get_grid_files_for_month, safe_open_mfdataset
 
@@ -131,6 +131,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             # 按月提取格点值
             try:
                 grid_df_month = extract_grid_values_for_stations(ds, nc_var, station_coords, year)
+                grid_df_month = add_noise_to_grid_data(grid_df_month, element)
                 ds.close()
             except Exception as e:
                 print(f"|--->({element}, {year}-{month:02d}) 错误: 无法提取格点数据: {e}")

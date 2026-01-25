@@ -10,9 +10,13 @@ from functools import reduce
 from sqlalchemy.orm import Session
 from ..db import crud
 from ..core.config import settings
-from ..core.data_mapping import cst_to_utc, NC_TO_DB_MAPPING
+from ..core.data_mapping import cst_to_utc, NC_TO_DB_MAPPING, ELEMENT_TO_DB_MAPPING
 
 
+NOISE_CONFIG = {
+    "温度": 0.5,
+    "相对湿度": 2.0
+}
 
 def clean_station_data(df: pd.DataFrame) -> pd.DataFrame:
     """清洗站点数据"""
@@ -53,6 +57,31 @@ def extract_grid_values_for_stations(ds, var_grid: str, station_coords: dict, ye
     # 北京时转换为世界时
     if hasattr(settings, 'CST_YEARS') and int(year) in settings.CST_YEARS:
         df["time"] = cst_to_utc(df["time"])
+    return df
+
+def add_noise_to_grid_data(df: pd.DataFrame, element: str) -> pd.DataFrame:
+    """
+    为格点数据添加高斯噪声以增强模型鲁棒性
+    """
+    if element in NOISE_CONFIG:
+        scale = NOISE_CONFIG[element]
+        db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
+        grid_col = f"{db_column_name}_grid"
+        
+        if grid_col in df.columns:
+            # 生成均值为0, 标准差为scale的高斯噪声
+            noise = np.random.normal(loc=0.0, scale=scale, size=len(df))
+            # 将噪声叠加到格点值上
+            df[grid_col] = df[grid_col] + noise
+            print(f"|---> 已为 {element} 的格点数据添加噪声 (scale={scale})")
+            
+            # 针对相对湿度, 确保添加噪声后不超过0-100的范围
+            if element == "相对湿度":
+                df[grid_col] = df[grid_col].clip(0, 100)
+            # 针对两分钟平均风速, 确保添加噪声后不为负值
+            if element == "两分钟平均风速":
+                df[grid_col] = df[grid_col].clip(lower=0)
+                
     return df
 
 def merge_sg_df(df_station: pd.DataFrame, df_grid: pd.DataFrame, element: str) -> pd.DataFrame:

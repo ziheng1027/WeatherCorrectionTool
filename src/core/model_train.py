@@ -10,6 +10,9 @@ from ..core.data_mapping import ELEMENT_TO_DB_MAPPING
 from ..core.config import settings, get_model_config_path, load_model_config
 
 
+# 定义使用残差模式的要素列表
+RESIDUAL_ELEMENTS = ["温度", "相对湿度", "过去1小时降水量"]
+
 def get_season(month: int) -> str:
     """根据月份划分季节"""
     if month in [3, 4, 5]:
@@ -121,12 +124,25 @@ def train_model(
     """训练模型并返回训练和验证损失"""
     # 划分特征和标签
     label_col = ELEMENT_TO_DB_MAPPING[element]
+    grid_col = f"{label_col}_grid"
     train_X = train_dataset.drop(columns=['station_id', 'station_name', 'season', label_col])
-    train_y = train_dataset[label_col]
     test_X = test_dataset.drop(columns=['station_id', 'station_name', 'season', label_col])
-    test_y = test_dataset[label_col]
+    # 目标 Y 的构建 (根据是否为残差模式区分)
+    if element in RESIDUAL_ELEMENTS:
+        # 残差模式: 目标 = 观测值 - 格点值
+        print(f"|--> [{element}] 采用残差预测模式 (Target = Obs - Grid)")
+        train_y_target = train_dataset[label_col] - train_dataset[grid_col]
+        test_y_target = test_dataset[label_col] - test_dataset[grid_col]
+    else:
+        # 直接模式: 目标 = 观测值
+        print(f"|--> [{element}] 采用直接预测模式 (Target = Obs)")
+        train_y_target = train_dataset[label_col]
+        test_y_target = test_dataset[label_col]
 
-    eval_set = [(train_X, train_y), (test_X, test_y)]
+    # 原始观测值 (用于最终评估)
+    test_y_true = test_dataset[label_col]
+
+    eval_set = [(train_X, train_y_target), (test_X, test_y_target)]
     eval_name = ["validation_0", "validation_1"]
     
     # 开始训练
@@ -138,13 +154,13 @@ def train_model(
             early_stopping_rounds=int(early_stopping_rounds)
         )
         model.fit(
-            train_X, train_y, eval_set=eval_set, verbose=10
+            train_X, train_y_target, eval_set=eval_set, verbose=10
         )
         results = model.evals_result()
     elif model_name.lower() == "lightgbm":
         import lightgbm as lgb
         model.fit(
-            train_X, train_y, eval_set=eval_set, eval_names=eval_name, 
+            train_X, train_y_target, eval_set=eval_set, eval_names=eval_name, 
             callbacks=[
                 lgb.log_evaluation(period=10),
                 lgb.early_stopping(int(early_stopping_rounds))
@@ -152,16 +168,22 @@ def train_model(
         )
         results = model.evals_result_
 
-    # 计算模型预测指标
-    pred_y = model.predict(test_X)
-    metrics_test_pred = cal_metrics(test_y, pred_y)
+    # 计算模型预测指标 (需要还原到真实物理量)
+    pred_raw = model.predict(test_X)
+    if element in RESIDUAL_ELEMENTS:
+        # 残差模式还原: 预测值 = 格点值 + 预测残差
+        pred_y_final = test_X[grid_col] + pred_raw
+    else:
+        # 直接模式
+        pred_y_final = pred_raw
+        
+    metrics_test_pred = cal_metrics(test_y_true, pred_y_final)
     print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 模型评估指标[指定测试集的均值]:")
     print(metrics_test_pred, " \n")
 
     # 计算原始数据指标
-    element_db_column = ELEMENT_TO_DB_MAPPING[element]
-    test_grid = test_X[f"{element_db_column}_grid"]
-    metrics_test_true = cal_metrics(test_y, test_grid)
+    test_grid = test_X[grid_col]
+    metrics_test_true = cal_metrics(test_y_true, test_grid)
     print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 原始数据指标[指定测试集的均值]:")
     print(metrics_test_true, " \n")
     
@@ -183,6 +205,7 @@ def evaluate_model(
 
     # 划分特征
     label_col = ELEMENT_TO_DB_MAPPING[element]
+    grid_col = f"{label_col}_grid"
     test_X = test_dataset.drop(columns=['station_id', 'station_name', 'season', label_col])
 
     # 计算特征重要性
@@ -190,7 +213,6 @@ def evaluate_model(
     print(f"[{model_name}, {element}, {start_year}-{end_year}, {season}] 特征重要性:")
     print(feature_importance_dict, " \n")
 
-    element_db_column = ELEMENT_TO_DB_MAPPING[element]
     # 存放原始站点数据, 原始格点数据以及模型预测数据
     results = []
     # 存放原始数据指标和模型预测指标
@@ -206,8 +228,14 @@ def evaluate_model(
         if station_test_X.empty: continue
         
         # 模型预测
-        station_test_grid = station_test_X[f"{element_db_column}_grid"]
-        station_pred_y = model.predict(station_test_X)
+        station_test_grid = station_test_X[grid_col]
+        station_pred_raw = model.predict(station_test_X)
+
+        # 还原预测值
+        if element in RESIDUAL_ELEMENTS:
+            station_pred_y = station_test_grid + station_pred_raw
+        else:
+            station_pred_y = station_pred_raw
 
         # 添加到results
         station_results = pd.DataFrame({

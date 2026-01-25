@@ -11,10 +11,13 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from ..db import crud
 from ..db.database import SessionLocal
 from ..core.config import settings, STOP_EVENT
-from ..core.data_mapping import ELEMENT_TO_NC_MAPPING
+from ..core.data_mapping import ELEMENT_TO_NC_MAPPING, NC_TO_DB_MAPPING
 from ..core.data_correct import build_feature_for_block
 from ..utils.file_io import load_model, get_grid_files_for_season, create_file_packages
 
+
+# 定义使用残差模式的要素列表
+RESIDUAL_ELEMENTS = ["温度", "相对湿度", "过去1小时降水量"]
 
 def correct_single_file(
         model: object, dem_ds: xr.Dataset, file_package: Dict, 
@@ -55,14 +58,27 @@ def correct_single_file(
                 )
 
                 # 使用模型进行预测
-                corrected_block_data = model.predict(feature_df)
+                pred_raw = model.predict(feature_df)
                 
+                # 根据订正模式计算最终结果
+                if element in RESIDUAL_ELEMENTS:
+                    # 获取当前块的原始格点值用于加残差
+                    # 确定特征df中对应的格点列名
+                    db_var = NC_TO_DB_MAPPING[nc_var]
+                    grid_col_name = f"{db_var}_grid"
+                    original_grid_values = feature_df[grid_col_name].values
+                    
+                    # 最终值 = 原始格点值 + 预测残差
+                    corrected_block_values = original_grid_values + pred_raw
+                else:
+                    # 直接预测模式
+                    corrected_block_values = pred_raw
+
                 # 回填结果
-                corrected_nc_data = corrected_block_data.reshape(grid_block_ds.shape)
+                corrected_nc_data = corrected_block_values.reshape(grid_block_ds.shape)
                 corrected_data[0, lat_start:lat_end, lon_start:lon_end] = corrected_nc_data
 
-                # 释放内存
-                del feature_df, corrected_block_data, corrected_nc_data
+                del feature_df, pred_raw, corrected_block_values, corrected_nc_data
                 gc.collect()
 
                 # 汇报进度
