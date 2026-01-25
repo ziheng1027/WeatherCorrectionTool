@@ -1,6 +1,7 @@
 # src/tasks/data_process.py
 import os
 import uuid
+import hashlib
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -131,7 +132,9 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             # 按月提取格点值
             try:
                 grid_df_month = extract_grid_values_for_stations(ds, nc_var, station_coords, year)
-                grid_df_month = add_noise_to_grid_data(grid_df_month, element)
+                seed_str = f"{element}_{year}_{month}"
+                deterministic_seed = int(hashlib.md5(seed_str.encode('utf-8')).hexdigest(), 16) % (2**32)
+                grid_df_month = add_noise_to_grid_data(grid_df_month, element, seed=deterministic_seed)
                 ds.close()
             except Exception as e:
                 print(f"|--->({element}, {year}-{month:02d}) 错误: 无法提取格点数据: {e}")

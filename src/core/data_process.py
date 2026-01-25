@@ -59,27 +59,30 @@ def extract_grid_values_for_stations(ds, var_grid: str, station_coords: dict, ye
         df["time"] = cst_to_utc(df["time"])
     return df
 
-def add_noise_to_grid_data(df: pd.DataFrame, element: str) -> pd.DataFrame:
-    """
-    为格点数据添加高斯噪声以增强模型鲁棒性
-    """
+def add_noise_to_grid_data(df: pd.DataFrame, element: str, seed: Optional[int] = None) -> pd.DataFrame:
+    """为格点数据添加高斯噪声"""
     if element in NOISE_CONFIG:
         scale = NOISE_CONFIG[element]
         db_column_name = ELEMENT_TO_DB_MAPPING.get(element)
         grid_col = f"{db_column_name}_grid"
         
         if grid_col in df.columns:
-            # 生成均值为0, 标准差为scale的高斯噪声
-            noise = np.random.normal(loc=0.0, scale=scale, size=len(df))
+            # 使用独立且确定的随机数生成器
+            if seed is not None:
+                rng = np.random.default_rng(seed)
+                noise = rng.normal(loc=0.0, scale=scale, size=len(df))
+            else:
+                noise = np.random.normal(loc=0.0, scale=scale, size=len(df))
+                
             # 将噪声叠加到格点值上
             df[grid_col] = df[grid_col] + noise
-            print(f"|---> 已为 {element} 的格点数据添加噪声 (scale={scale})")
             
             # 针对相对湿度, 确保添加噪声后不超过0-100的范围
             if element == "相对湿度":
                 df[grid_col] = df[grid_col].clip(0, 100)
-            # 针对两分钟平均风速, 确保添加噪声后不为负值
-            if element == "两分钟平均风速":
+            
+            # 修正之前的拼写 "两" -> "2"
+            if element == "2分钟平均风速":
                 df[grid_col] = df[grid_col].clip(lower=0)
                 
     return df
