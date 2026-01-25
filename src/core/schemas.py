@@ -347,3 +347,81 @@ class PivotModelRankingStatusResponse(BaseModel):
     progress: float
     progress_text: str
     results: Optional[PivotModelRankingResponse] = None
+
+
+class MultiStationEvalRequest(BaseModel):
+    """多站点评估请求参数"""
+    model_name: Literal["XGBoost", "LightGBM"] = Field(..., description="模型名称")
+    element: AVAILABLE_ELEMENTS
+    model_file: str = Field(..., description="模型文件名(位于output/models/model_name/下)")
+    start_year: int
+    end_year: int
+    season: str = Field(..., description="季节: 全年, 春季, 夏季, 秋季, 冬季")
+
+
+class StationEvalResult(BaseModel):
+    """单站点评估结果详情"""
+    station_id: str
+    station_name: str
+    lat: float
+    lon: float
+    # 模型指标
+    model_cc: float
+    model_rmse: float
+    model_mae: float
+    model_mre: float
+    model_mbe: float
+    model_r2: float
+    # 格点(原始)指标
+    grid_cc: float
+    grid_rmse: float
+    grid_mae: float
+    grid_mre: float
+    grid_mbe: float
+    grid_r2: float
+    # 差值与提升判断
+    diff_cc: float
+    diff_cc_improved: bool
+    diff_rmse: float
+    diff_rmse_improved: bool
+    diff_mae: float
+    diff_mae_improved: bool
+    diff_mre: float
+    diff_mre_improved: bool
+    diff_mbe: float
+    diff_mbe_improved: bool
+    diff_r2: float
+    diff_r2_improved: bool
+
+
+class MetricSummary(BaseModel):
+    improved_count: int
+    degraded_count: int
+
+
+class MultiStationEvalSummary(BaseModel):
+    """全站评估综合统计"""
+    total_stations: int
+    cc: MetricSummary
+    rmse: MetricSummary
+    mae: MetricSummary
+    mre: MetricSummary
+    mbe: MetricSummary
+    r2: MetricSummary
+
+
+class MultiStationEvalResult(BaseModel):
+    """评估结果容器"""
+    task_id: str
+    status: str
+    results: Optional[List[StationEvalResult]] = None
+    summary: Optional[MultiStationEvalSummary] = None
+
+
+class MultiStationEvalStatusResponse(BaseModel):
+    """评估任务状态响应"""
+    task_id: str
+    status: str
+    progress: float
+    progress_text: str
+    results: Optional[MultiStationEvalResult] = None

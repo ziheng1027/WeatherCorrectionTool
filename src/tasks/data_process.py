@@ -80,7 +80,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
         start_time = time()
         for df_chunk in df_itrator:
             total_raws += len(df_chunk)
-            df_cleaned_chunk = clean_station_data(df_chunk) 
+            df_cleaned_chunk = clean_station_data(df_chunk, element) 
             cleaned_chunks.append(df_cleaned_chunk)
 
         if not cleaned_chunks:
@@ -88,7 +88,7 @@ def process_yearly_element(subtask_id: str, element: str, year: str):
             update_task_status(db, subtask_id, "FAILED", 10.0, f"在 {year} 年未找到有效的 {element} 站点数据")
             print(f"|-- [Worker PID:{mp.current_process().pid}] 警告: 在 {year} 年未找到有效的 {element} 站点数据")
             return
-        
+
         df_cleaned = pd.concat(cleaned_chunks, ignore_index=True)
         # 将"station_value"列重命名为DB中的列名
         df_cleaned.rename(columns={"station_value": db_column_name}, inplace=True)

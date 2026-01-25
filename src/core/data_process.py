@@ -14,24 +14,43 @@ from ..core.data_mapping import cst_to_utc, NC_TO_DB_MAPPING, ELEMENT_TO_DB_MAPP
 
 
 NOISE_CONFIG = {
-    "温度": 0.5,
-    "相对湿度": 2.0
+    "温度": 0.4,
+    "相对湿度": 2.0,
+    "2分钟平均风速": 0.3
 }
 
-def clean_station_data(df: pd.DataFrame) -> pd.DataFrame:
+def clean_station_data(df: pd.DataFrame, element: str) -> pd.DataFrame:
     """清洗站点数据"""
     df_cleaned = df.copy()
     # 1. 将异常值转换为缺失值
-    df_cleaned.loc[df_cleaned['station_value'] > 9998, 'station_value'] = np.nan
+    df_cleaned.loc[df_cleaned['station_value'] > 1000, 'station_value'] = np.nan
+
     # 处理缺失值: 三次样条插值/线性插值/直接删除
-    if df_cleaned['station_value'].isnull().sum() > 0:
-        try:
-            df_cleaned['station_value'] = df_cleaned['station_value'].interpolate(method="spline", order=3)
-        except:
+    if element == "过去1小时降水量":
+        # 降水量不能插值，缺失值应该直接删除掉
+        df_cleaned = df_cleaned.dropna(subset=['station_value'])
+    else:
+        # 其他要素(温度、湿度、风速): 保持原有的插值逻辑
+        if df_cleaned['station_value'].isnull().sum() > 0:
             try:
-                df_cleaned['station_value'] = df_cleaned['station_value'].interpolate(method="linear")
+                # 优先尝试三次样条插值
+                df_cleaned['station_value'] = df_cleaned['station_value'].interpolate(method="spline", order=3)
             except:
-                df_cleaned = df_cleaned.dropna(subset=['station_value'])
+                try:
+                    # 失败则尝试线性插值
+                    df_cleaned['station_value'] = df_cleaned['station_value'].interpolate(method="linear")
+                except:
+                    # 均失败则删除
+                    df_cleaned = df_cleaned.dropna(subset=['station_value'])
+    
+    # 范围限制
+    if element == "温度":
+        df_cleaned['station_value'] = df_cleaned['station_value'].clip(-40, 60)
+    elif element == "相对湿度":
+        df_cleaned['station_value'] = df_cleaned['station_value'].clip(0, 100)
+    elif element == "2分钟平均风速":
+        df_cleaned['station_value'] = df_cleaned['station_value'].clip(0, 100)
+
     return df_cleaned
 
 def extract_grid_values_for_stations(ds, var_grid: str, station_coords: dict, year: str) -> pd.DataFrame:
@@ -48,7 +67,12 @@ def extract_grid_values_for_stations(ds, var_grid: str, station_coords: dict, ye
 
     # 将grid_var列重命名为DB中的列名
     db_column_name = NC_TO_DB_MAPPING.get(var_grid)
-    df.rename(columns={var_grid: f"{db_column_name}_grid"}, inplace=True)
+    grid_col_name = f"{db_column_name}_grid" 
+    df.rename(columns={var_grid: grid_col_name}, inplace=True)
+
+    # 清洗异常大值
+    if grid_col_name in df.columns:
+        df.loc[df[grid_col_name] > 1000, grid_col_name] = None
 
     # 添加站点ID映射
     df["station_id_grid"] = df["station"].apply(lambda x: station_ids[x])
@@ -77,13 +101,13 @@ def add_noise_to_grid_data(df: pd.DataFrame, element: str, seed: Optional[int] =
             # 将噪声叠加到格点值上
             df[grid_col] = df[grid_col] + noise
             
-            # 针对相对湿度, 确保添加噪声后不超过0-100的范围
+            # 针对相对湿度, 确保添加噪声后不超过范围
+            if element == "温度":
+                df[grid_col] = df[grid_col].clip(-40, 60)
             if element == "相对湿度":
                 df[grid_col] = df[grid_col].clip(0, 100)
-            
-            # 修正之前的拼写 "两" -> "2"
             if element == "2分钟平均风速":
-                df[grid_col] = df[grid_col].clip(lower=0)
+                df[grid_col] = df[grid_col].clip(0, 100)
                 
     return df
 
