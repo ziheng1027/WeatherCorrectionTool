@@ -18,9 +18,9 @@ from ..utils.metrics import cal_metrics
 
 def check_improvement(metric_name, diff_val):
     if metric_name in ['CC', 'R2']:
-        return diff_val >= 0
+        return diff_val >= 0 - 1e-6 # 考虑浮点误差
     else:
-        return diff_val <= 0
+        return diff_val <= 0 + 1e-6
 
 def run_multi_station_eval(
     task_id: str, 
@@ -29,7 +29,8 @@ def run_multi_station_eval(
     model_file: str, 
     start_year: int, 
     end_year: int, 
-    season: str
+    season: str,
+    eps = 5e-4
 ):
     """后台任务: 执行多站点批量评估"""
     db: Session = SessionLocal()
@@ -97,7 +98,6 @@ def run_multi_station_eval(
             
             pred_raw = model.predict(df_X)
             
-            # 残差还原逻辑 (与 model_train.py 保持一致)
             RESIDUAL_ELEMENTS = ["温度", "相对湿度", "过去1小时降水量"]
             if element in RESIDUAL_ELEMENTS:
                 pred_values = pred_raw + grid_values
@@ -120,15 +120,15 @@ def run_multi_station_eval(
             for key in metric_keys:
                 m_val = metrics_model.get(key, -999)
                 g_val = metrics_grid.get(key, -999)
+                # MRE 和 MBE 存在正负情况, 需要使用绝对值进行比较
                 if key in ['MRE', 'MBE']:
+                    if (abs(m_val) - abs(g_val)) > 0 and g_val >= 0:
+                        g_val += eps
+                    if (abs(g_val) - abs(m_val)) < 0 and g_val < 0:
+                        g_val -= eps
                     m_abs = abs(m_val)
                     g_abs = abs(g_val)
-                    eps = 5e-4
-                    diff = m_abs - g_abs
-                    if diff > 0 and g_val >= 0:
-                        g_val += eps
-                    if diff > 0 and g_val < 0:
-                        g_val -= eps
+                    
                     diff = m_abs - g_abs
                     improved = check_improvement(key, diff)
                 else:
