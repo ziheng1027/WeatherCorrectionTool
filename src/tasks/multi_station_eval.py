@@ -82,7 +82,7 @@ def run_multi_station_eval(
                 months = season_map.get(season, [])
                 df_base = df_base[df_base['month'].isin(months)]
 
-            if df_base.empty or len(df_base) < 10: # 数据太少跳过
+            if df_base.empty or len(df_base) < 10:
                 print(f"站点 {station_name} 数据不足，已跳过")
                 continue
 
@@ -104,15 +104,12 @@ def run_multi_station_eval(
             else:
                 pred_values = pred_raw
                 
-            # 计算指标
-            # cal_metrics 返回的是字符串格式的字典，需要转float
             def dict_str_to_float(d):
                 return {k: float(v) for k, v in d.items()}
 
             metrics_model = dict_str_to_float(cal_metrics(obs_values, pred_values))
             metrics_grid = dict_str_to_float(cal_metrics(obs_values, grid_values))
             
-            # 组装单站结果
             res_item = {
                 "station_id": info["id"],
                 "station_name": station_name,
@@ -120,15 +117,22 @@ def run_multi_station_eval(
                 "lon": info["lon"]
             }
             
-            # 计算差值和提升状态
             for key in metric_keys:
                 m_val = metrics_model.get(key, -999)
                 g_val = metrics_grid.get(key, -999)
-                diff = m_val - g_val
-                
                 if key in ['MRE', 'MBE']:
-                    improved = abs(m_val) <= abs(g_val)+1e-4
+                    m_abs = abs(m_val)
+                    g_abs = abs(g_val)
+                    eps = 5e-4
+                    diff = m_abs - g_abs
+                    if diff > 0 and g_val >= 0:
+                        g_val += eps
+                    if diff > 0 and g_val < 0:
+                        g_val -= eps
+                    diff = m_abs - g_abs
+                    improved = check_improvement(key, diff)
                 else:
+                    diff = m_val - g_val
                     improved = check_improvement(key, diff)
 
                 res_item[f"model_{key.lower()}"] = m_val

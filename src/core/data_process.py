@@ -14,8 +14,8 @@ from ..core.data_mapping import cst_to_utc, NC_TO_DB_MAPPING, ELEMENT_TO_DB_MAPP
 
 
 NOISE_CONFIG = {
-    "温度": {"scale": 0.4, "bias": -0.05},
-    "相对湿度": {"scale": 2.0, "bias": -0.08},
+    "温度": {"scale": 0.3, "bias": 0.08},
+    "相对湿度": {"scale": 1.6, "bias": 0.16},
     "2分钟平均风速": {"scale": 0.3, "bias": 0.05}
 }
 
@@ -24,11 +24,12 @@ def clean_station_data(df: pd.DataFrame, element: str) -> pd.DataFrame:
     df_cleaned = df.copy()
     # 1. 将异常值转换为缺失值
     df_cleaned.loc[df_cleaned['station_value'] > 1000, 'station_value'] = np.nan
-
     # 处理缺失值: 三次样条插值/线性插值/直接删除
     if element == "过去1小时降水量":
         # 降水量不能插值，缺失值应该直接删除掉
         df_cleaned = df_cleaned.dropna(subset=['station_value'])
+        # 小于0的降水量置为0
+        df_cleaned.loc[df_cleaned['station_value'] < 0, 'station_value'] = 0
     else:
         # 其他要素(温度、湿度、风速): 保持原有的插值逻辑
         if df_cleaned['station_value'].isnull().sum() > 0:
