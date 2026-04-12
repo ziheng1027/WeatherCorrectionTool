@@ -1,47 +1,226 @@
-﻿import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-type ModuleKey = "settings" | "import" | "process" | "train" | "correct" | "pivot" | "tasks";
-type Task = { task_id: string; task_name: string; task_type: string; status: string; progress: number; progress_text: string };
-type TaskDetail = { parent: Task; sub_tasks: Task[] };
-type ModelRecord = { task_id: string; model_name: string; element: string; model_path: string };
-type LogItem = { id: string; title: string; detail: string; tone: "info" | "success" | "error" };
-type TaskFilter = "ALL" | "PROCESSING" | "COMPLETED" | "FAILED" | "PENDING";
-type StationOption = { name: string; raw: unknown };
-type RawStationData = { station_name: string; lat: number; lon: number; timestamps: string[]; values: Array<number | null> };
-type RawGridHeatmapData = { lats: number[]; lons: number[]; values: Array<Array<number | null>> };
-type RawGridTimeseriesData = { lat: number; lon: number; timestamps: string[]; values: Array<number | null> };
-type PivotProcessedData = { timestamps: string[]; station_values: Array<number | null>; grid_values: Array<number | null> };
-type PivotHeatmapData = { lats: number[]; lons: number[]; values_before: Array<Array<number | null>>; values_after: Array<Array<number | null>> };
-type PivotTimeseriesData = { timestamps: string[]; values_before: Array<number | null>; values_after: Array<number | null> };
-type VisualKey = "raw-station" | "raw-grid" | "raw-grid-series" | "processed" | "compare-heatmap" | "compare-series";
+/* ===== 类型定义 ===== */
 
-const BASE_URL_KEY = "weather-correction-base-url";
-const ELEMENTS = ["温度", "相对湿度", "过去1小时降水量", "2分钟平均风速"];
-const SEASONS = ["全年", "春季", "夏季", "秋季", "冬季"];
-const MODULES: Array<{ key: ModuleKey; title: string; desc: string }> = [
-  { key: "settings", title: "数据源配置", desc: "维护站点、格点和基础资源路径" },
-  { key: "import", title: "数据导入", desc: "检查文件并启动入库任务" },
-  { key: "process", title: "数据预处理", desc: "按时间范围生成训练与分析底表" },
-  { key: "train", title: "模型训练", desc: "配置训练集并发起模型训练" },
-  { key: "correct", title: "数据订正", desc: "选择模型并执行格点订正" },
-  { key: "pivot", title: "数据透视", desc: "分析站点对比并查看格点热力图" },
-  { key: "tasks", title: "任务监控", desc: "查看父子任务状态与进度" },
-];
-const EMPTY_TASK: Task = { task_id: "", task_name: "", task_type: "", status: "IDLE", progress: 0, progress_text: "" };
-const VISUAL_ORDER: VisualKey[] = ["raw-station", "raw-grid", "raw-grid-series", "processed", "compare-heatmap", "compare-series"];
-const VISUAL_META: Record<VisualKey, { title: string; section: string; detail: string }> = {
-  "raw-station": { title: "原始站点曲线", section: "原始预览", detail: "查看站点观测在所选时间范围内的变化节奏。" },
-  "raw-grid": { title: "原始格点热力图", section: "原始预览", detail: "查看指定时刻的原始空间分布，并可直接选点。" },
-  "raw-grid-series": { title: "原始格点时序", section: "原始预览", detail: "沿选中格点回看连续变化，判断原始数据稳定性。" },
-  processed: { title: "站点对比分析", section: "订正对比", detail: "将站点实测与原始格点放到同一尺度下比对。" },
-  "compare-heatmap": { title: "订正前后热力图", section: "订正对比", detail: "对照同一时刻订正前后的空间差异。" },
-  "compare-series": { title: "订正前后时序", section: "订正对比", detail: "跟踪单个格点在订正前后的时序变化。" },
+type ModuleKey =
+  | "dashboard"
+  | "settings"
+  | "import"
+  | "process"
+  | "train"
+  | "correct"
+  | "pivot"
+  | "multieval"
+  | "tasks";
+
+type TaskStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "IDLE" | "UNKNOWN";
+
+type Task = {
+  task_id: string;
+  task_name: string;
+  task_type: string;
+  status: string;
+  progress: number;
+  progress_text: string;
 };
 
-function clampProgress(value: unknown) {
+type TaskDetail = { parent: Task; sub_tasks: Task[] };
+
+type ModelRecord = {
+  task_id: string;
+  model_name: string;
+  element: string;
+  model_path: string;
+};
+
+type LogItem = {
+  id: string;
+  title: string;
+  detail: string;
+  tone: "info" | "success" | "error";
+};
+
+type TaskFilter = "ALL" | "PROCESSING" | "COMPLETED" | "FAILED" | "PENDING";
+
+type StationOption = { name: string; raw: unknown };
+
+/* 数据预览类型 */
+type RawStationData = {
+  station_name: string;
+  lat: number;
+  lon: number;
+  timestamps: string[];
+  values: Array<number | null>;
+};
+
+type RawGridHeatmapData = {
+  lats: number[];
+  lons: number[];
+  values: Array<Array<number | null>>;
+};
+
+type RawGridTimeseriesData = {
+  lat: number;
+  lon: number;
+  timestamps: string[];
+  values: Array<number | null>;
+};
+
+type PivotProcessedData = {
+  timestamps: string[];
+  station_values: Array<number | null>;
+  grid_values: Array<number | null>;
+};
+
+type PivotHeatmapData = {
+  lats: number[];
+  lons: number[];
+  values_before: Array<Array<number | null>>;
+  values_after: Array<Array<number | null>>;
+};
+
+type PivotTimeseriesData = {
+  timestamps: string[];
+  values_before: Array<number | null>;
+  values_after: Array<number | null>;
+};
+
+/* 模型训练结果类型 */
+type LossesData = {
+  epochs: number[];
+  train_losses: number[];
+  test_losses: number[];
+};
+
+type MetricsData = {
+  testset_true: Record<string, number>;
+  testset_pred: Record<string, number>;
+};
+
+/* 导出任务类型 */
+type ExportStatus = {
+  task_id: string;
+  status: string;
+  progress: number;
+  progress_text: string;
+  download_url: string | null;
+};
+
+/* 模型评估结果类型 */
+type ModelEvalResult = {
+  timestamps: string[];
+  station_values: Array<number | null>;
+  grid_values: Array<number | null>;
+  pred_values: Array<{
+    model_name: string;
+    pred_values: Array<number | null>;
+  }>;
+  metrics: Array<{
+    station_name: string;
+    model_name: string;
+    metrics: Record<string, number>;
+  }>;
+};
+
+/* 模型排名结果类型 */
+type RankedModel = {
+  model_name: string;
+  model_id: string;
+  task_id: string;
+  season: string;
+  metrics: Record<string, number>;
+};
+
+type ModelRankResult = {
+  filter_conditions: Record<string, unknown>;
+  total_models_found: number;
+  total_metrics_loaded: number;
+  ranked_models: RankedModel[];
+};
+
+/* 多站点评估结果类型 */
+type StationEvalResult = {
+  station_id: string;
+  station_name: string;
+  lat: number;
+  lon: number;
+  model_cc: number;
+  model_rmse: number;
+  model_mae: number;
+  model_mre: number;
+  model_mbe: number;
+  model_r2: number;
+  grid_cc: number;
+  grid_rmse: number;
+  grid_mae: number;
+  grid_mre: number;
+  grid_mbe: number;
+  grid_r2: number;
+  diff_cc: number;
+  diff_cc_improved: boolean;
+  diff_rmse: number;
+  diff_rmse_improved: boolean;
+  diff_mae: number;
+  diff_mae_improved: boolean;
+  diff_mre: number;
+  diff_mre_improved: boolean;
+  diff_mbe: number;
+  diff_mbe_improved: boolean;
+  diff_r2: number;
+  diff_r2_improved: boolean;
+};
+
+type MultiEvalSummary = {
+  total_stations: number;
+  cc: { improved_count: number; degraded_count: number };
+  rmse: { improved_count: number; degraded_count: number };
+  mae: { improved_count: number; degraded_count: number };
+  mre: { improved_count: number; degraded_count: number };
+  mbe: { improved_count: number; degraded_count: number };
+  r2: { improved_count: number; degraded_count: number };
+};
+
+/* ===== 常量 ===== */
+
+const BASE_URL_KEY = "weather-correction-base-url";
+
+const ELEMENTS = [
+  "温度",
+  "相对湿度",
+  "过去1小时降水量",
+  "2分钟平均风速",
+];
+
+const SEASONS = ["全年", "春季", "夏季", "秋季", "冬季"];
+
+const METRIC_NAMES = ["CC", "RMSE", "MAE", "MRE", "MBE", "R2"];
+
+const MODULES: Array<{ key: ModuleKey; title: string; desc: string }> = [
+  { key: "dashboard", title: "仪表盘", desc: "总览工作流进度与系统状态" },
+  { key: "settings", title: "数据源", desc: "配置基础数据路径" },
+  { key: "import", title: "数据导入", desc: "检查并导入站点数据" },
+  { key: "process", title: "预处理", desc: "按时间范围生成训练底表" },
+  { key: "train", title: "模型训练", desc: "配置参数并训练模型" },
+  { key: "correct", title: "数据订正", desc: "使用模型订正格点数据" },
+  { key: "pivot", title: "数据透视", desc: "分析对比与可视化" },
+  { key: "multieval", title: "多站点评估", desc: "批量评估模型效果" },
+  { key: "tasks", title: "任务监控", desc: "查看任务状态与进度" },
+];
+
+const EMPTY_TASK: Task = {
+  task_id: "",
+  task_name: "",
+  task_type: "",
+  status: "IDLE",
+  progress: 0,
+  progress_text: "",
+};
+
+/* ===== 工具函数 ===== */
+
+function clampProgress(value: unknown): number {
   const n = Number(value ?? 0);
-  if (Number.isNaN(n)) return 0;
-  return Math.max(0, Math.min(100, n));
+  return Number.isNaN(n) ? 0 : Math.max(0, Math.min(100, n));
 }
 
 function mapTask(raw: Record<string, unknown>): Task {
@@ -51,11 +230,13 @@ function mapTask(raw: Record<string, unknown>): Task {
     task_type: String(raw.task_type ?? ""),
     status: String(raw.status ?? "UNKNOWN"),
     progress: clampProgress(raw.progress ?? raw.cur_progress),
-    progress_text: String(raw.progress_text ?? raw.pregress_text ?? ""),
+    progress_text: String(
+      raw.progress_text ?? raw.pregress_text ?? ""
+    ),
   };
 }
 
-function statusClass(status: string) {
+function statusClass(status: string): string {
   if (status === "COMPLETED") return "status-completed";
   if (status === "PROCESSING") return "status-processing";
   if (status === "FAILED") return "status-failed";
@@ -63,7 +244,7 @@ function statusClass(status: string) {
   return "status-idle";
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string): string {
   if (status === "COMPLETED") return "已完成";
   if (status === "PROCESSING") return "执行中";
   if (status === "FAILED") return "失败";
@@ -87,156 +268,260 @@ function parseStations(raw: unknown): StationOption[] {
   if (!Array.isArray(rows)) return [];
   return rows
     .map((item) => {
-      if (Array.isArray(item) && item.length > 0) return { name: String(item[0] ?? ""), raw: item };
-      if (item && typeof item === "object" && "name" in item) return { name: String((item as { name?: unknown }).name ?? ""), raw: item };
+      if (Array.isArray(item) && item.length > 0)
+        return { name: String(item[0] ?? ""), raw: item };
+      if (item && typeof item === "object" && "name" in item)
+        return {
+          name: String((item as { name?: unknown }).name ?? ""),
+          raw: item,
+        };
       return { name: String(item ?? ""), raw: item };
     })
     .filter((item) => item.name);
 }
 
-function toApiDateTime(value: string) {
+function toApiDateTime(value: string): string {
   if (!value) return "";
   return value.length === 16 ? `${value}:00` : value;
 }
 
-function shiftHours(baseValue: string, hours: number) {
+function shiftHours(
+  baseValue: string,
+  hours: number
+): { start: string; end: string } {
   const base = new Date(baseValue);
   if (Number.isNaN(base.getTime())) return { start: "", end: "" };
   const start = new Date(base.getTime() - hours * 60 * 60 * 1000);
-  const pad = (value: number) => `${value}`.padStart(2, "0");
-  const toLocalInput = (value: Date) => `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  const pad = (v: number) => `${v}`.padStart(2, "0");
+  const toLocalInput = (v: Date) =>
+    `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}T${pad(v.getHours())}:${pad(v.getMinutes())}`;
   return { start: toLocalInput(start), end: toLocalInput(base) };
 }
 
-function formatAxisTick(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return `${`${date.getMonth() + 1}`.padStart(2, "0")}-${`${date.getDate()}`.padStart(2, "0")} ${`${date.getHours()}`.padStart(2, "0")}:00`;
+function formatAxisTick(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  const pad = (v: number) => `${v}`.padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:00`;
 }
 
-function formatMetric(value: number | null | undefined, digits = 2) {
+function fmt(value: number | null | undefined, digits = 2): string {
   if (value == null || Number.isNaN(value)) return "--";
   return value.toFixed(digits);
 }
 
-function average(values: Array<number | null | undefined>) {
-  const valid = values.filter((item): item is number => typeof item === "number" && Number.isFinite(item));
+function average(values: Array<number | null | undefined>): number | null {
+  const valid = values.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
   if (!valid.length) return null;
-  return valid.reduce((sum, item) => sum + item, 0) / valid.length;
+  return valid.reduce((s, v) => s + v, 0) / valid.length;
 }
 
-function diffAverage(a: Array<number | null | undefined>, b: Array<number | null | undefined>) {
+function diffAverage(
+  a: Array<number | null | undefined>,
+  b: Array<number | null | undefined>
+): number | null {
   const pairs = a
-    .map((item, index) => (typeof item === "number" && typeof b[index] === "number" ? item - (b[index] as number) : null))
-    .filter((item): item is number => typeof item === "number" && Number.isFinite(item));
+    .map((v, i) =>
+      typeof v === "number" && typeof b[i] === "number"
+        ? v - (b[i] as number)
+        : null
+    )
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (!pairs.length) return null;
-  return pairs.reduce((sum, item) => sum + item, 0) / pairs.length;
+  return pairs.reduce((s, v) => s + v, 0) / pairs.length;
 }
 
-function flattenMatrix(values: Array<Array<number | null>>) {
-  return values.flat().filter((item): item is number => typeof item === "number" && Number.isFinite(item));
+function flattenMatrix(
+  values: Array<Array<number | null>>
+): number[] {
+  return values
+    .flat()
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
 }
 
-function colorForValue(value: number | null, min: number, max: number) {
-  if (value == null || !Number.isFinite(value)) return "rgba(255,255,255,0.08)";
-  if (min === max) return "hsl(190 70% 55%)";
+function colorForValue(
+  value: number | null,
+  min: number,
+  max: number
+): string {
+  if (value == null || !Number.isFinite(value))
+    return "rgba(255,255,255,0.06)";
+  if (min === max) return "hsl(180 70% 50%)";
   const ratio = (value - min) / (max - min);
-  const hue = 220 - ratio * 190;
-  const light = 28 + ratio * 34;
-  return `hsl(${hue} 78% ${light}%)`;
+  const hue = 200 - ratio * 180;
+  const light = 25 + ratio * 35;
+  return `hsl(${hue} 75% ${light}%)`;
 }
 
-function buildLinePath(values: Array<number | null>, width: number, height: number) {
+function buildLinePath(
+  values: Array<number | null>,
+  width: number,
+  height: number
+): { path: string; min: number; max: number } {
   const points = values
-    .map((value, index) => ({ value, index }))
-    .filter((item): item is { value: number; index: number } => typeof item.value === "number" && Number.isFinite(item.value));
+    .map((v, i) => ({ v, i }))
+    .filter(
+      (p): p is { v: number; i: number } =>
+        typeof p.v === "number" && Number.isFinite(p.v)
+    );
   if (!points.length) return { path: "", min: 0, max: 0 };
-  const min = Math.min(...points.map((item) => item.value));
-  const max = Math.max(...points.map((item) => item.value));
+  const min = Math.min(...points.map((p) => p.v));
+  const max = Math.max(...points.map((p) => p.v));
   const range = max - min || 1;
   const step = values.length > 1 ? width / (values.length - 1) : width;
   const path = points
-    .map((point, idx) => {
-      const x = point.index * step;
-      const y = height - ((point.value - min) / range) * height;
+    .map((p, idx) => {
+      const x = p.i * step;
+      const y = height - ((p.v - min) / range) * height;
       return `${idx === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
     })
     .join(" ");
   return { path, min, max };
 }
 
-function Sparkline({ title, color, values }: { title: string; color: string; values: Array<number | null> }) {
-  const { path, min, max } = useMemo(() => buildLinePath(values, 640, 180), [values]);
+/* ===== 通用 UI 组件 ===== */
 
+function StatusPill({ status }: { status: string }) {
   return (
-    <div className="chart-legend-item">
-      <div className="chart-legend-top">
-        <span className="chart-dot" style={{ background: color }} />
-        <strong>{title}</strong>
-      </div>
-      <small>{formatMetric(min)} ~ {formatMetric(max)}</small>
-      <svg viewBox="0 0 640 180" className="trend-mini">
-        <path d={path} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      </svg>
+    <span className={`status-pill ${statusClass(status)}`}>
+      {statusLabel(status)}
+    </span>
+  );
+}
+
+function ProgressBar({
+  value,
+  slim,
+}: {
+  value: number;
+  slim?: boolean;
+}) {
+  return (
+    <div className={`progress-track${slim ? " slim" : ""}`}>
+      <div
+        className="progress-fill"
+        style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+      />
     </div>
   );
 }
 
-function MultiLineChart({ labels, series }: { labels: string[]; series: Array<{ name: string; color: string; values: Array<number | null> }> }) {
-  const width = 680;
-  const height = 220;
-  const padding = 24;
-  const valid = series.flatMap((item) => item.values.filter((value): value is number => typeof value === "number" && Number.isFinite(value)));
+function Empty({ children }: { children: ReactNode }) {
+  return <div className="empty">{children}</div>;
+}
+
+/* ===== 图表组件 ===== */
+
+function LineChart({
+  labels,
+  series,
+  width = 700,
+  height = 220,
+  pad = 24,
+}: {
+  labels: string[];
+  series: Array<{ name: string; color: string; values: Array<number | null> }>;
+  width?: number;
+  height?: number;
+  pad?: number;
+}) {
+  const valid = series.flatMap((s) =>
+    s.values.filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+  );
   const min = valid.length ? Math.min(...valid) : 0;
   const max = valid.length ? Math.max(...valid) : 1;
   const range = max - min || 1;
-  const xStep = labels.length > 1 ? (width - padding * 2) / (labels.length - 1) : width - padding * 2;
+  const xStep =
+    labels.length > 1
+      ? (width - pad * 2) / (labels.length - 1)
+      : width - pad * 2;
 
   return (
-    <div className="trend-card">
-      <div className="trend-card-head">
+    <div className="chart-card">
+      <div className="chart-head">
         <div>
           <strong>趋势对比</strong>
-          <small>站点实测、原始格点与订正结果可在同一尺度下对比</small>
+          <small>
+            {labels[0] ? `${formatAxisTick(labels[0])} → ${formatAxisTick(labels[labels.length - 1])}` : ""}
+          </small>
         </div>
         <div className="chart-legend">
-          {series.map((item) => (
-            <span className="legend-item" key={item.name}>
-              <i className="legend-dot" style={{ background: item.color }} />
-              {item.name}
+          {series.map((s) => (
+            <span className="legend-item" key={s.name}>
+              <i
+                className="legend-dot"
+                style={{ background: s.color }}
+              />
+              {s.name}
             </span>
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="trend-chart">
-        {[0, 1, 2, 3].map((line) => {
-          const y = padding + ((height - padding * 2) / 3) * line;
-          return <line key={line} x1={padding} y1={y} x2={width - padding} y2={y} className="chart-grid-line" />;
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="chart-svg"
+      >
+        {[0, 1, 2, 3].map((i) => {
+          const y = pad + ((height - pad * 2) / 3) * i;
+          return (
+            <line
+              key={i}
+              x1={pad}
+              y1={y}
+              x2={width - pad}
+              y2={y}
+              className="chart-grid-line"
+            />
+          );
         })}
-        {series.map((item) => {
-          const path = item.values
-            .map((value, index) => {
-              if (typeof value !== "number" || !Number.isFinite(value)) return null;
-              const x = padding + index * xStep;
-              const y = height - padding - ((value - min) / range) * (height - padding * 2);
+        {series.map((s) => {
+          const pts = s.values
+            .map((v, i) => {
+              if (typeof v !== "number" || !Number.isFinite(v))
+                return null;
+              const x = pad + i * xStep;
+              const y =
+                height -
+                pad -
+                ((v - min) / range) * (height - pad * 2);
               return `${x},${y}`;
             })
             .filter(Boolean)
             .join(" ");
-          return <polyline key={item.name} points={path} fill="none" stroke={item.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />;
+          return (
+            <polyline
+              key={s.name}
+              points={pts}
+              fill="none"
+              stroke={s.color}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
         })}
-        <text x={padding} y={18} className="chart-axis-label">{formatMetric(max)}</text>
-        <text x={padding} y={height - 8} className="chart-axis-label">{formatMetric(min)}</text>
+        <text x={pad} y={16} className="chart-axis-label">
+          {fmt(max)}
+        </text>
+        <text x={pad} y={height - 6} className="chart-axis-label">
+          {fmt(min)}
+        </text>
       </svg>
-      <div className="chart-foot">
-        <span>{labels[0] ? `起点 ${formatAxisTick(labels[0])}` : "暂无时间轴"}</span>
-        <span>{labels.length ? `终点 ${formatAxisTick(labels[labels.length - 1])}` : ""}</span>
-      </div>
     </div>
   );
 }
 
-function HeatmapMatrix({ title, values, lats, lons, focus, onSelect, subtitle }: {
+function HeatmapMatrix({
+  title,
+  values,
+  lats,
+  lons,
+  focus,
+  onSelect,
+  subtitle,
+}: {
   title: string;
   values: Array<Array<number | null>>;
   lats: number[];
@@ -245,136 +530,280 @@ function HeatmapMatrix({ title, values, lats, lons, focus, onSelect, subtitle }:
   onSelect: (row: number, col: number) => void;
   subtitle?: string;
 }) {
-  const allValues = useMemo(() => flattenMatrix(values), [values]);
-  const min = allValues.length ? Math.min(...allValues) : 0;
-  const max = allValues.length ? Math.max(...allValues) : 1;
+  const all = useMemo(() => flattenMatrix(values), [values]);
+  const min = all.length ? Math.min(...all) : 0;
+  const max = all.length ? Math.max(...all) : 1;
   const rows = Math.max(values.length, 1);
   const cols = Math.max(lons.length, 1);
-  const fittedWidth = Math.max(Math.min((320 * cols) / rows, 760), 220);
+  const w = Math.max(Math.min((320 * cols) / rows, 720), 200);
 
   return (
     <div className="heatmap-card">
-      <div className="heatmap-head">
+      <div className="chart-head">
         <div>
           <strong>{title}</strong>
-          {subtitle ? <small className="heatmap-subtitle">{subtitle}</small> : null}
+          {subtitle ? (
+            <small>{subtitle}</small>
+          ) : null}
         </div>
-        <small>{formatMetric(min)} ~ {formatMetric(max)}</small>
+        <small>
+          {fmt(min)} ~ {fmt(max)}
+        </small>
       </div>
       <div
         className="heatmap-grid"
         style={{
-          gridTemplateColumns: `repeat(${cols}, minmax(8px, 1fr))`,
-          width: `min(100%, ${fittedWidth}px)`,
+          gridTemplateColumns: `repeat(${cols}, minmax(6px, 1fr))`,
+          width: `min(100%, ${w}px)`,
           marginInline: "auto",
         }}
       >
-        {values.map((row, rowIndex) =>
-          row.map((cell, colIndex) => {
-            const selected = focus?.row === rowIndex && focus?.col === colIndex;
-            return (
-              <button
-                key={`${rowIndex}-${colIndex}`}
-                type="button"
-                className={`heat-cell ${selected ? "selected" : ""}`}
-                style={{ background: colorForValue(cell, min, max) }}
-                title={`纬度 ${formatMetric(lats[rowIndex], 3)} / 经度 ${formatMetric(lons[colIndex], 3)} / 值 ${formatMetric(cell, 3)}`}
-                onClick={() => onSelect(rowIndex, colIndex)}
-              />
-            );
-          }),
+        {values.map((row, ri) =>
+          row.map((cell, ci) => (
+            <button
+              key={`${ri}-${ci}`}
+              type="button"
+              className={`heat-cell${focus?.row === ri && focus?.col === ci ? " selected" : ""}`}
+              style={{ background: colorForValue(cell, min, max) }}
+              title={`lat ${fmt(lats[ri], 3)} / lon ${fmt(lons[ci], 3)} / val ${fmt(cell, 3)}`}
+              onClick={() => onSelect(ri, ci)}
+            />
+          ))
         )}
       </div>
       <div className="heatmap-axis">
-        <span>纬度 {lats.length ? `${formatMetric(lats[0], 2)} ~ ${formatMetric(lats[lats.length - 1], 2)}` : "--"}</span>
-        <span>经度 {lons.length ? `${formatMetric(lons[0], 2)} ~ ${formatMetric(lons[lons.length - 1], 2)}` : "--"}</span>
+        <span>
+          纬度{lats.length ? ` ${fmt(lats[0], 2)} ~ ${fmt(lats[lats.length - 1], 2)}` : " --"}
+        </span>
+        <span>
+          经度{lons.length ? ` ${fmt(lons[0], 2)} ~ ${fmt(lons[lons.length - 1], 2)}` : " --"}
+        </span>
       </div>
     </div>
   );
 }
 
-function VisualLaunchCard({
+function Sparkline({
   title,
-  detail,
-  action,
-  accent = "default",
+  color,
+  values,
 }: {
   title: string;
-  detail: string;
-  action?: ReactNode;
-  accent?: "default" | "good";
+  color: string;
+  values: Array<number | null>;
 }) {
+  const { path, min, max } = useMemo(
+    () => buildLinePath(values, 640, 60),
+    [values]
+  );
   return (
-    <div className={`visual-launch-card ${accent === "good" ? "accent-good" : ""}`}>
-      <div>
-        <strong>{title}</strong>
-        <p>{detail}</p>
-      </div>
-      {action}
+    <div className="sparkline-item">
+      <strong>{title}</strong>
+      <small>
+        {fmt(min)} ~ {fmt(max)}
+      </small>
+      <svg viewBox="0 0 640 60" className="sparkline-svg">
+        <path
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+      </svg>
     </div>
   );
 }
 
+/* ===== 主应用 ===== */
+
 export default function App() {
-  const [baseUrl, setBaseUrl] = useState(() => localStorage.getItem(BASE_URL_KEY) ?? "http://127.0.0.1:8000");
-  const [moduleKey, setModuleKey] = useState<ModuleKey>("pivot");
+  /* ----- 全局状态 ----- */
+  const [baseUrl, setBaseUrl] = useState(
+    () => localStorage.getItem(BASE_URL_KEY) ?? "http://127.0.0.1:8000"
+  );
+  const [moduleKey, setModuleKey] = useState<ModuleKey>("dashboard");
   const [online, setOnline] = useState(false);
   const [busy, setBusy] = useState("");
   const [lastSync, setLastSync] = useState("--:--:--");
-  const [settings, setSettings] = useState({ station_data_dir: "", grid_data_dir: "", station_info_path: "", dem_data_path: "" });
-  const [importCount, setImportCount] = useState(0);
-  const [importFiles, setImportFiles] = useState<string[]>([]);
+
+  /* 基础数据 */
+  const [settings, setSettings] = useState({
+    station_data_dir: "",
+    grid_data_dir: "",
+    station_info_path: "",
+    dem_data_path: "",
+  });
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [stations, setStations] = useState<StationOption[]>([]);
+
+  /* 任务系统 */
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("ALL");
   const [taskSearch, setTaskSearch] = useState("");
-  const [taskSort, setTaskSort] = useState<"progress_desc" | "progress_asc" | "name">("progress_desc");
-  const [taskDetail, setTaskDetail] = useState<TaskDetail>({ parent: EMPTY_TASK, sub_tasks: [] });
-  const [logs, setLogs] = useState<LogItem[]>([]);
-  const [processForm, setProcessForm] = useState({ elements: [...ELEMENTS], start_year: "2008", end_year: "2023", num_workers: "48" });
-  const [trainForm, setTrainForm] = useState({ element: [...ELEMENTS], start_year: "2008", end_year: "2023", season: "全年", split_method: "按年份划分", test_set_values: "2022,2023", model: "XGBoost", early_stopping_rounds: "150" });
-  const [correctForm, setCorrectForm] = useState({ model_path: "", element: "温度", start_year: "2008", end_year: "2023", season: "全年", block_size: "100", num_workers: "48" });
-  const [pivotForm, setPivotForm] = useState({ station_name: "", element: "温度", start_time: "2023-01-01T00:00", end_time: "2023-01-03T00:00", heatmap_time: "2023-01-01T00:00", lat: "", lon: "" });
-  const [rawStationData, setRawStationData] = useState<RawStationData | null>(null);
-  const [rawGridData, setRawGridData] = useState<RawGridHeatmapData | null>(null);
-  const [rawGridTaskId, setRawGridTaskId] = useState("");
-  const [rawGridStatus, setRawGridStatus] = useState<{ status: string; progress: number; error?: string | null } | null>(null);
-  const [rawGridSeriesData, setRawGridSeriesData] = useState<RawGridTimeseriesData | null>(null);
-  const [visualKey, setVisualKey] = useState<VisualKey | null>(null);
-  const [processedData, setProcessedData] = useState<PivotProcessedData | null>(null);
-  const [heatmapData, setHeatmapData] = useState<PivotHeatmapData | null>(null);
-  const [heatmapFocus, setHeatmapFocus] = useState<{ row: number; col: number } | null>(null);
-  const [pivotSeriesTaskId, setPivotSeriesTaskId] = useState("");
-  const [pivotSeriesStatus, setPivotSeriesStatus] = useState<{ status: string; progress: number; progress_text: string } | null>(null);
-  const [pivotSeriesData, setPivotSeriesData] = useState<PivotTimeseriesData | null>(null);
+  const [taskDetail, setTaskDetail] = useState<TaskDetail>({
+    parent: EMPTY_TASK,
+    sub_tasks: [],
+  });
 
-  function addLog(title: string, detail: string, tone: LogItem["tone"]) {
-    setLogs((current) => [{ id: `${Date.now()}-${Math.random()}`, title, detail, tone }, ...current].slice(0, 8));
+  /* 日志 */
+  const [logs, setLogs] = useState<LogItem[]>([]);
+
+  /* 导入 */
+  const [importCount, setImportCount] = useState(0);
+  const [importFiles, setImportFiles] = useState<string[]>([]);
+
+  /* 预处理 */
+  const [processForm, setProcessForm] = useState({
+    elements: [...ELEMENTS],
+    start_year: "2008",
+    end_year: "2023",
+    num_workers: "48",
+  });
+
+  /* 训练 */
+  const [trainForm, setTrainForm] = useState({
+    element: [...ELEMENTS],
+    start_year: "2008",
+    end_year: "2023",
+    season: "全年",
+    split_method: "按年份划分",
+    test_set_values: "2022,2023",
+    model: "XGBoost",
+    early_stopping_rounds: "150",
+  });
+  const [modelConfig, setModelConfig] = useState<Record<string, unknown>>({});
+  const [configModel, setConfigModel] = useState("XGBoost");
+  const [configElement, setConfigElement] = useState("温度");
+  const [lossesData, setLossesData] = useState<LossesData | null>(null);
+  const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
+
+  /* 订正 */
+  const [correctForm, setCorrectForm] = useState({
+    model_path: "",
+    element: "温度",
+    start_year: "2008",
+    end_year: "2023",
+    season: "全年",
+    block_size: "100",
+    num_workers: "48",
+  });
+
+  /* 透视 */
+  const [pivotForm, setPivotForm] = useState({
+    station_name: "",
+    element: "温度",
+    start_time: "2023-01-01T00:00",
+    end_time: "2023-01-03T00:00",
+    heatmap_time: "2023-01-01T00:00",
+    lat: "",
+    lon: "",
+  });
+  const [rawStationData, setRawStationData] =
+    useState<RawStationData | null>(null);
+  const [rawGridData, setRawGridData] =
+    useState<RawGridHeatmapData | null>(null);
+  const [rawGridTaskId, setRawGridTaskId] = useState("");
+  const [rawGridSeriesData, setRawGridSeriesData] =
+    useState<RawGridTimeseriesData | null>(null);
+  const [processedData, setProcessedData] =
+    useState<PivotProcessedData | null>(null);
+  const [heatmapData, setHeatmapData] =
+    useState<PivotHeatmapData | null>(null);
+  const [heatmapFocus, setHeatmapFocus] = useState<{
+    row: number;
+    col: number;
+  } | null>(null);
+  const [pivotSeriesTaskId, setPivotSeriesTaskId] = useState("");
+  const [pivotSeriesData, setPivotSeriesData] =
+    useState<PivotTimeseriesData | null>(null);
+
+  /* 导出 */
+  const [exportTaskId, setExportTaskId] = useState("");
+  const [exportSource, setExportSource] = useState<"preview" | "pivot">("preview");
+  const [exportStatus, setExportStatus] = useState<ExportStatus | null>(null);
+
+  /* 模型评估 */
+  const [modelEvalTaskId, setModelEvalTaskId] = useState("");
+  const [modelEvalResult, setModelEvalResult] =
+    useState<ModelEvalResult | null>(null);
+
+  /* 模型排名 */
+  const [rankTaskId, setRankTaskId] = useState("");
+  const [rankResult, setRankResult] = useState<ModelRankResult | null>(null);
+
+  /* 多站点评估 */
+  const [multiEvalForm, setMultiEvalForm] = useState({
+    model_name: "XGBoost" as "XGBoost" | "LightGBM",
+    element: "温度",
+    model_file: "",
+    start_year: "2008",
+    end_year: "2023",
+    season: "全年",
+  });
+  const [multiEvalTaskId, setMultiEvalTaskId] = useState("");
+  const [multiEvalResult, setMultiEvalResult] = useState<{
+    results: StationEvalResult[];
+    summary: MultiEvalSummary;
+  } | null>(null);
+
+  /* ----- 日志 ----- */
+  function addLog(
+    title: string,
+    detail: string,
+    tone: LogItem["tone"]
+  ) {
+    setLogs((prev) =>
+      [
+        { id: `${Date.now()}-${Math.random()}`, title, detail, tone },
+        ...prev,
+      ].slice(0, 10)
+    );
   }
 
-  async function api<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, init);
-    const text = await response.text();
+  /* ----- API 工具 ----- */
+  async function api<T>(
+    path: string,
+    init?: RequestInit
+  ): Promise<T> {
+    const res = await fetch(
+      `${baseUrl.replace(/\/$/, "")}${path}`,
+      init
+    );
+    const text = await res.text();
     let data: unknown = {};
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
       data = text;
     }
-    if (!response.ok) {
-      let detail = `${response.status} ${response.statusText}`;
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
       if (typeof data === "string" && data) detail = data;
       if (typeof data === "object" && data && "detail" in data) {
-        const value = (data as { detail?: unknown }).detail;
-        detail = typeof value === "string" ? value : JSON.stringify(value);
+        const v = (data as { detail?: unknown }).detail;
+        detail = typeof v === "string" ? v : JSON.stringify(v);
       }
       throw new Error(detail);
     }
     return data as T;
   }
 
+  async function runAction(
+    key: string,
+    work: () => Promise<void>
+  ) {
+    try {
+      setBusy(key);
+      await work();
+      await refreshTasks();
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ----- 数据刷新 ----- */
   async function refreshBase() {
     try {
       const [config, modelData, stationData] = await Promise.all([
@@ -391,259 +820,142 @@ export default function App() {
       const nextModels = modelData.models ?? [];
       setModels(nextModels);
       if (nextModels[0]) {
-        setCorrectForm((current) => ({ ...current, model_path: current.model_path || nextModels[0].model_path, element: current.element || nextModels[0].element }));
+        setCorrectForm((c) => ({
+          ...c,
+          model_path: c.model_path || nextModels[0].model_path,
+          element: c.element || nextModels[0].element,
+        }));
       }
       const nextStations = parseStations(stationData);
       setStations(nextStations);
       if (nextStations[0]) {
-        setPivotForm((current) => ({ ...current, station_name: current.station_name || nextStations[0].name }));
+        setPivotForm((c) => ({
+          ...c,
+          station_name: c.station_name || nextStations[0].name,
+        }));
       }
       setOnline(true);
-      setLastSync(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }));
+      setLastSync(
+        new Date().toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        })
+      );
       localStorage.setItem(BASE_URL_KEY, baseUrl);
-    } catch (error) {
+    } catch {
       setOnline(false);
-      addLog("连接失败", error instanceof Error ? error.message : "无法连接后端服务", "error");
     }
   }
 
   async function refreshTasks() {
     try {
-      const history = await api<Array<Record<string, unknown>>>("/task_operate/history?limit=24");
+      const history = await api<Array<Record<string, unknown>>>(
+        "/task_operate/history?limit=24"
+      );
       const next = history.map(mapTask);
       setTasks(next);
       if (!selectedTaskId && next[0]) setSelectedTaskId(next[0].task_id);
-    } catch (error) {
-      addLog("任务列表刷新失败", error instanceof Error ? error.message : "未知错误", "error");
+    } catch {
+      /* 静默 */
     }
   }
 
   async function refreshTaskDetail(taskId: string) {
     if (!taskId) return;
     try {
-      const detail = await api<{ parent: Record<string, unknown>; sub_tasks: Array<Record<string, unknown>> }>(`/task_operate/status/${encodeURIComponent(taskId)}/details`);
-      setTaskDetail({ parent: mapTask(detail.parent), sub_tasks: (detail.sub_tasks ?? []).map(mapTask) });
+      const detail = await api<{
+        parent: Record<string, unknown>;
+        sub_tasks: Array<Record<string, unknown>>;
+      }>(`/task_operate/status/${encodeURIComponent(taskId)}/details`);
+      setTaskDetail({
+        parent: mapTask(detail.parent),
+        sub_tasks: (detail.sub_tasks ?? []).map(mapTask),
+      });
     } catch {
       try {
-        const parent = await api<Record<string, unknown>>(`/task_operate/status/${encodeURIComponent(taskId)}`);
+        const parent = await api<Record<string, unknown>>(
+          `/task_operate/status/${encodeURIComponent(taskId)}`
+        );
         setTaskDetail({ parent: mapTask(parent), sub_tasks: [] });
-      } catch (error) {
-        addLog("任务详情刷新失败", error instanceof Error ? error.message : "未知错误", "error");
+      } catch {
+        /* 静默 */
       }
     }
   }
 
+  /* ----- Effects ----- */
   useEffect(() => {
     void refreshBase();
     void refreshTasks();
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const timer = setInterval(() => {
       void refreshBase();
       void refreshTasks();
     }, 6000);
-    return () => window.clearInterval(timer);
+    return () => clearInterval(timer);
   }, [baseUrl]);
 
   useEffect(() => {
     if (!selectedTaskId) return;
     void refreshTaskDetail(selectedTaskId);
-    const timer = window.setInterval(() => void refreshTaskDetail(selectedTaskId), 3000);
-    return () => window.clearInterval(timer);
+    const timer = setInterval(
+      () => void refreshTaskDetail(selectedTaskId),
+      3000
+    );
+    return () => clearInterval(timer);
   }, [selectedTaskId, baseUrl]);
 
-  useEffect(() => {
-    if (!pivotSeriesTaskId) return;
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const result = await api<{ status: string; progress: number; progress_text: string; results?: PivotTimeseriesData | null }>(`/data-pivot/grid-data-timeseries/status/${pivotSeriesTaskId}`);
-        if (cancelled) return;
-        setPivotSeriesStatus({ status: result.status, progress: result.progress, progress_text: result.progress_text });
-        if (result.status === "COMPLETED" && result.results) setPivotSeriesData(result.results);
-      } catch (error) {
-        if (cancelled) return;
-        addLog("格点时序刷新失败", error instanceof Error ? error.message : "未知错误", "error");
-      }
-    };
-    void run();
-    const timer = window.setInterval(() => void run(), 2000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [pivotSeriesTaskId]);
-
-  useEffect(() => {
-    if (!rawGridTaskId) return;
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const result = await api<{ status: string; progress: number; result?: RawGridTimeseriesData | null; error?: string | null }>(`/data-preview/grid-time-series/status/${rawGridTaskId}`);
-        if (cancelled) return;
-        setRawGridStatus({ status: result.status, progress: result.progress, error: result.error });
-        if (result.status === "COMPLETED" && result.result) setRawGridSeriesData(result.result);
-      } catch (error) {
-        if (cancelled) return;
-        addLog("原始格点时序刷新失败", error instanceof Error ? error.message : "未知错误", "error");
-      }
-    };
-    void run();
-    const timer = window.setInterval(() => void run(), 2000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [rawGridTaskId]);
-
-  useEffect(() => {
-    if (!visualKey) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setVisualKey(null);
-        return;
-      }
-      if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-      const available = VISUAL_ORDER.filter((key) => {
-        if (key === "raw-station") return Boolean(rawStationData);
-        if (key === "raw-grid") return Boolean(rawGridData);
-        if (key === "raw-grid-series") return Boolean(rawGridSeriesData);
-        if (key === "processed") return Boolean(processedData);
-        if (key === "compare-heatmap") return Boolean(heatmapData);
-        return Boolean(pivotSeriesData);
-      });
-      const currentIndex = available.indexOf(visualKey);
-      if (currentIndex === -1 || available.length <= 1) return;
-      const nextIndex = event.key === "ArrowRight"
-        ? (currentIndex + 1) % available.length
-        : (currentIndex - 1 + available.length) % available.length;
-      setVisualKey(available[nextIndex]);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visualKey, rawStationData, rawGridData, rawGridSeriesData, processedData, heatmapData, pivotSeriesData]);
-
-  const stats = useMemo(() => ({
-    processing: tasks.filter((item) => item.status === "PROCESSING").length,
-    completed: tasks.filter((item) => item.status === "COMPLETED").length,
-    failed: tasks.filter((item) => item.status === "FAILED").length,
-  }), [tasks]);
+  /* ----- 计算值 ----- */
+  const stats = useMemo(
+    () => ({
+      processing: tasks.filter((t) => t.status === "PROCESSING").length,
+      completed: tasks.filter((t) => t.status === "COMPLETED").length,
+      failed: tasks.filter((t) => t.status === "FAILED").length,
+    }),
+    [tasks]
+  );
 
   const filteredTasks = tasks
-    .filter((item) => taskFilter === "ALL" || item.status === taskFilter)
-    .filter((item) => {
+    .filter((t) => taskFilter === "ALL" || t.status === taskFilter)
+    .filter((t) => {
       const q = taskSearch.trim().toLowerCase();
       if (!q) return true;
-      return `${item.task_name} ${item.task_type} ${item.task_id}`.toLowerCase().includes(q);
-    })
-    .sort((a, b) => {
-      if (taskSort === "progress_asc") return a.progress - b.progress;
-      if (taskSort === "name") return a.task_name.localeCompare(b.task_name);
-      return b.progress - a.progress;
+      return `${t.task_name} ${t.task_type} ${t.task_id}`
+        .toLowerCase()
+        .includes(q);
     });
 
-  const moduleTasks = filteredTasks.filter((item) => taskModule(item.task_type) === moduleKey).slice(0, 6);
-  const taskHistoryView = moduleKey === "tasks" ? filteredTasks : tasks;
-  const selectedModel = models.find((item) => item.model_path === correctForm.model_path) ?? models[0];
+  const moduleTasks = filteredTasks
+    .filter((t) => taskModule(t.task_type) === moduleKey)
+    .slice(0, 6);
 
-  const moduleHint = useMemo(() => {
-    if (moduleKey === "settings") return "先确认四项基础路径，再进入导入、训练和订正流程。";
-    if (moduleKey === "import") return "建议先检查文件数量与样本，再正式启动导入任务。";
-    if (moduleKey === "process") return "先选时间范围和要素，再提交预处理任务。";
-    if (moduleKey === "train") return "优先整理测试集配置，再发起训练。";
-    if (moduleKey === "correct") return "确认模型和要素匹配后，再执行订正。";
-    if (moduleKey === "pivot") return "训练前先看原始站点与原始格点，订正后再切到前后对比热力图和时序。";
-    return "先按状态筛选，再查看右侧父任务和子任务的详细进度。";
-  }, [moduleKey]);
+  const taskSummary = useMemo(
+    () => ({
+      total: taskDetail.sub_tasks.length,
+      completed: taskDetail.sub_tasks.filter(
+        (t) => t.status === "COMPLETED"
+      ).length,
+      failed: taskDetail.sub_tasks.filter((t) => t.status === "FAILED")
+        .length,
+      processing: taskDetail.sub_tasks.filter(
+        (t) => t.status === "PROCESSING"
+      ).length,
+    }),
+    [taskDetail.sub_tasks]
+  );
 
-  const moduleStage = useMemo(() => {
-    if (moduleKey === "settings") return settings.station_data_dir && settings.grid_data_dir
-      ? { label: "已配置", tone: "good", detail: "基础路径已经可用，可以继续业务流程。" }
-      : { label: "待配置", tone: "warn", detail: "仍需补齐站点、格点等路径信息。" };
-    if (moduleKey === "import") return importCount > 0
-      ? { label: "可执行", tone: "good", detail: `已识别 ${importCount} 个待导入文件。` }
-      : { label: "待检查", tone: "warn", detail: "建议先检查文件后再启动导入。" };
-    if (moduleKey === "process") return processForm.elements.length > 0
-      ? { label: "可执行", tone: "good", detail: `当前已选择 ${processForm.elements.length} 个要素。` }
-      : { label: "待选择", tone: "warn", detail: "至少选择一个要素后再提交任务。" };
-    if (moduleKey === "train") return trainForm.element.length > 0
-      ? { label: "待训练", tone: "info", detail: `当前模型 ${trainForm.model}，可直接发起训练。` }
-      : { label: "待选择", tone: "warn", detail: "请先选择训练要素。" };
-    if (moduleKey === "correct") return selectedModel
-      ? { label: "可订正", tone: "good", detail: `当前模型 ${selectedModel.model_name}` }
-      : { label: "缺少模型", tone: "warn", detail: "需要先完成训练并生成模型记录。" };
-    if (moduleKey === "pivot") return rawStationData || rawGridData || processedData || heatmapData
-      ? { label: "已联动", tone: "good", detail: "原始预览和订正对比都已经可以分析。" }
-      : { label: "待查询", tone: "info", detail: "选择时间与要素后即可生成透视结果。" };
-    return { label: "监控中", tone: "info", detail: `当前筛选后共有 ${taskHistoryView.length} 条任务。` };
-  }, [moduleKey, settings, importCount, processForm.elements.length, trainForm.element.length, trainForm.model, selectedModel, taskHistoryView.length, rawStationData, rawGridData, processedData, heatmapData]);
+  const selectedModel = models.find(
+    (m) => m.model_path === correctForm.model_path
+  ) ?? models[0];
 
-  const taskSummary = useMemo(() => {
-    const subTasks = taskDetail.sub_tasks;
-    return {
-      total: subTasks.length,
-      completed: subTasks.filter((item) => item.status === "COMPLETED").length,
-      failed: subTasks.filter((item) => item.status === "FAILED").length,
-      processing: subTasks.filter((item) => item.status === "PROCESSING").length,
-    };
-  }, [taskDetail.sub_tasks]);
+  const currentModule = MODULES.find((m) => m.key === moduleKey);
 
-  const processedSummary = useMemo(() => {
-    if (!processedData) return null;
-    return {
-      stationMean: average(processedData.station_values),
-      gridMean: average(processedData.grid_values),
-      meanBias: diffAverage(processedData.station_values, processedData.grid_values),
-      count: processedData.timestamps.length,
-    };
-  }, [processedData]);
+  /* ----- 模块 API 操作 ----- */
 
-  const rawSummary = useMemo(() => {
-    if (!rawStationData) return null;
-    return {
-      stationMean: average(rawStationData.values),
-      count: rawStationData.timestamps.length,
-    };
-  }, [rawStationData]);
-
-  const focusMeta = useMemo(() => {
-    if (!heatmapData || !heatmapFocus) return null;
-    const { row, col } = heatmapFocus;
-    return {
-      lat: heatmapData.lats[row],
-      lon: heatmapData.lons[col],
-      before: heatmapData.values_before[row]?.[col] ?? null,
-      after: heatmapData.values_after[row]?.[col] ?? null,
-    };
-  }, [heatmapData, heatmapFocus]);
-  const rawFocusMeta = useMemo(() => {
-    if (!rawGridData || !heatmapFocus) return null;
-    const { row, col } = heatmapFocus;
-    return {
-      lat: rawGridData.lats[row],
-      lon: rawGridData.lons[col],
-      value: rawGridData.values[row]?.[col] ?? null,
-    };
-  }, [rawGridData, heatmapFocus]);
-
-  async function runAction(key: string, work: () => Promise<void>) {
-    try {
-      setBusy(key);
-      await work();
-      await refreshTasks();
-    } finally {
-      setBusy("");
-    }
-  }
-
-  function toggleList(target: string, kind: "process" | "train") {
-    if (kind === "process") {
-      setProcessForm((current) => ({ ...current, elements: current.elements.includes(target) ? current.elements.filter((item) => item !== target) : [...current.elements, target] }));
-    } else {
-      setTrainForm((current) => ({ ...current, element: current.element.includes(target) ? current.element.filter((item) => item !== target) : [...current.element, target] }));
-    }
-  }
   async function saveSettings() {
     await runAction("save-settings", async () => {
       await api("/settings/source-dirs", {
@@ -651,103 +963,1115 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      addLog("保存成功", "数据源路径已更新。", "success");
+      addLog("保存成功", "数据源路径已更新", "success");
       await refreshBase();
     });
   }
 
   async function checkImportFiles() {
     await runAction("check-import", async () => {
-      const result = await api<{ count: number; files: string[] }>("/data-import/check");
-      setImportCount(result.count);
-      setImportFiles(result.files ?? []);
-      addLog("检查完成", `识别到 ${result.count} 个待导入文件。`, "success");
+      const r = await api<{ count: number; files: string[] }>(
+        "/data-import/check"
+      );
+      setImportCount(r.count);
+      setImportFiles(r.files ?? []);
+      addLog("检查完成", `识别到 ${r.count} 个待导入文件`, "success");
     });
   }
 
   async function startImport() {
     await runAction("start-import", async () => {
-      const result = await api<{ task_id: string; message: string }>("/data-import/start", { method: "POST" });
-      setSelectedTaskId(result.task_id);
-      addLog("导入任务已启动", result.message, "success");
+      const r = await api<{ task_id: string; message: string }>(
+        "/data-import/start",
+        { method: "POST" }
+      );
+      setSelectedTaskId(r.task_id);
+      addLog("导入已启动", r.message, "success");
     });
   }
 
   async function startProcess() {
     await runAction("start-process", async () => {
-      const result = await api<{ task_id: string; message: string }>("/data-process/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ elements: processForm.elements, start_year: processForm.start_year, end_year: processForm.end_year, num_workers: Number(processForm.num_workers) }),
-      });
-      setSelectedTaskId(result.task_id);
-      addLog("预处理任务已启动", result.message, "success");
+      const r = await api<{ task_id: string; message: string }>(
+        "/data-process/start",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            elements: processForm.elements,
+            start_year: processForm.start_year,
+            end_year: processForm.end_year,
+            num_workers: Number(processForm.num_workers),
+          }),
+        }
+      );
+      setSelectedTaskId(r.task_id);
+      addLog("预处理已启动", r.message, "success");
     });
+  }
+
+  function toggleProcessElement(el: string) {
+    setProcessForm((c) => ({
+      ...c,
+      elements: c.elements.includes(el)
+        ? c.elements.filter((e) => e !== el)
+        : [...c.elements, el],
+    }));
+  }
+
+  function toggleTrainElement(el: string) {
+    setTrainForm((c) => ({
+      ...c,
+      element: c.element.includes(el)
+        ? c.element.filter((e) => e !== el)
+        : [...c.element, el],
+    }));
   }
 
   async function startTrain() {
     await runAction("start-train", async () => {
-      const result = await api<{ task_id: string; message: string }>("/model-train/start", {
+      const r = await api<{ task_id: string; message: string }>(
+        "/model-train/start",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            element: trainForm.element,
+            start_year: trainForm.start_year,
+            end_year: trainForm.end_year,
+            season: trainForm.season,
+            split_method: trainForm.split_method,
+            test_set_values: trainForm.test_set_values
+              .split(/[,\n]/)
+              .map((s) => s.trim())
+              .filter(Boolean),
+            model: trainForm.model,
+            early_stopping_rounds: trainForm.early_stopping_rounds,
+          }),
+        }
+      );
+      setSelectedTaskId(r.task_id);
+      addLog("训练已启动", r.message, "success");
+    });
+  }
+
+  async function fetchModelConfig() {
+    await runAction("fetch-config", async () => {
+      const r = await api<Record<string, unknown>>(
+        `/model-train/model-config/${configModel}/${configElement}`
+      );
+      setModelConfig(r);
+      addLog(
+        "配置已加载",
+        `${configModel} / ${configElement} 参数已读取`,
+        "success"
+      );
+    });
+  }
+
+  async function updateModelConfig() {
+    await runAction("update-config", async () => {
+      const r = await api<{ message: string }>(
+        `/model-train/model-config/${configModel}/${configElement}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ params: modelConfig }),
+        }
+      );
+      addLog("配置已更新", r.message, "success");
+    });
+  }
+
+  async function fetchLosses() {
+    await runAction("fetch-losses", async () => {
+      const r = await api<LossesData>("/model-train/get-losses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          element: trainForm.element,
+          task_id: taskDetail.parent.task_id,
+          model: trainForm.model,
+          element: trainForm.element[0] ?? "温度",
           start_year: trainForm.start_year,
           end_year: trainForm.end_year,
           season: trainForm.season,
           split_method: trainForm.split_method,
-          test_set_values: trainForm.test_set_values.split(/[,\n]/).map((item) => item.trim()).filter(Boolean),
-          model: trainForm.model,
-          early_stopping_rounds: trainForm.early_stopping_rounds,
         }),
       });
-      setSelectedTaskId(result.task_id);
-      addLog("训练任务已启动", result.message, "success");
+      setLossesData(r);
+      addLog(
+        "损失曲线已加载",
+        `${r.epochs.length} 个 epoch`,
+        "success"
+      );
     });
+  }
+
+  async function fetchMetrics() {
+    await runAction("fetch-metrics", async () => {
+      const r = await api<MetricsData>(
+        "/model-train/get-metrics-testset-all",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: taskDetail.parent.task_id,
+            model: trainForm.model,
+            element: trainForm.element[0] ?? "温度",
+            start_year: trainForm.start_year,
+            end_year: trainForm.end_year,
+            season: trainForm.season,
+            split_method: trainForm.split_method,
+          }),
+        }
+      );
+      setMetricsData(r);
+      addLog("评估指标已加载", "测试集指标已读取", "success");
+    });
+  }
+
+  async function saveModelRecord(taskId: string) {
+    await runAction("save-model", async () => {
+      const r = await api<{ message: string }>(
+        `/model-train/save-model-record?task_id=${encodeURIComponent(taskId)}`
+      );
+      addLog("模型已保存", r.message, "success");
+      await refreshBase();
+    });
+  }
+
+  async function deleteModelRecord(taskId: string) {
+    await runAction("delete-model", async () => {
+      const r = await api<{ message: string }>(
+        `/model-train/delete-model-record/${encodeURIComponent(taskId)}`,
+        { method: "DELETE" }
+      );
+      addLog("模型已删除", r.message, "info");
+      await refreshBase();
+    });
+  }
+
+  /* ----- 模块面板渲染 ----- */
+
+  function renderDashboard(): ReactNode {
+    const steps = [
+      {
+        key: "settings",
+        title: "配置数据源",
+        done: !!(settings.station_data_dir && settings.grid_data_dir),
+      },
+      {
+        key: "import",
+        title: "导入站点数据",
+        done: tasks.some(
+          (t) =>
+            t.task_type.startsWith("DataImport") &&
+            t.status === "COMPLETED"
+        ),
+      },
+      {
+        key: "process",
+        title: "数据预处理",
+        done: tasks.some(
+          (t) =>
+            t.task_type.startsWith("DataProcess") &&
+            t.status === "COMPLETED"
+        ),
+      },
+      {
+        key: "train",
+        title: "模型训练",
+        done: tasks.some(
+          (t) =>
+            t.task_type.startsWith("ModelTrain") &&
+            t.status === "COMPLETED"
+        ),
+      },
+      {
+        key: "correct",
+        title: "数据订正",
+        done: tasks.some(
+          (t) =>
+            t.task_type.startsWith("DataCorrect") &&
+            t.status === "COMPLETED"
+        ),
+      },
+    ];
+    const doneCount = steps.filter((s) => s.done).length;
+    const recentTasks = tasks.slice(0, 8);
+
+    return (
+      <>
+        {/* 总览统计 */}
+        <div className="stats-row">
+          <div className="stat-card">
+            <span>可用站点</span>
+            <strong>{stations.length}</strong>
+          </div>
+          <div className="stat-card">
+            <span>已训练模型</span>
+            <strong>{models.length}</strong>
+          </div>
+          <div className="stat-card">
+            <span>执行中</span>
+            <strong>{stats.processing}</strong>
+          </div>
+          <div className="stat-card">
+            <span>已完成任务</span>
+            <strong>{stats.completed}</strong>
+          </div>
+          <div className="stat-card">
+            <span>失败任务</span>
+            <strong>{stats.failed}</strong>
+          </div>
+          <div className="stat-card">
+            <span>工作流进度</span>
+            <strong>
+              {doneCount}/{steps.length}
+            </strong>
+          </div>
+        </div>
+
+        <div className="dashboard-grid">
+          {/* 工作流 */}
+          <div className="dashboard-card">
+            <h3>工作流进度</h3>
+            <div className="workflow-steps">
+              {steps.map((s, i) => (
+                <button
+                  key={s.key}
+                  className="workflow-step"
+                  onClick={() => setModuleKey(s.key as ModuleKey)}
+                  style={{ cursor: "pointer", textAlign: "left" }}
+                >
+                  <span className={`step-num${s.done ? " done" : ""}`}>
+                    {s.done ? "✓" : i + 1}
+                  </span>
+                  <span style={{ flex: 1 }}>{s.title}</span>
+                  <StatusPill status={s.done ? "COMPLETED" : "IDLE"} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 最近任务 */}
+          <div className="dashboard-card" style={{ gridColumn: "span 2" }}>
+            <div className="card-header">
+              <h2>最近任务</h2>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setModuleKey("tasks")}
+              >
+                查看全部
+              </button>
+            </div>
+            {recentTasks.length > 0 ? (
+              <div className="task-list">
+                {recentTasks.map((t) => (
+                  <div key={t.task_id} className="task-item">
+                    <div className="task-top">
+                      <strong>{t.task_name}</strong>
+                      <StatusPill status={t.status} />
+                    </div>
+                    <div className="task-meta">
+                      <span>{t.task_type}</span>
+                      <span>{t.progress}%</span>
+                    </div>
+                    <ProgressBar value={t.progress} slim />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty>暂无任务，从左侧导航开始操作</Empty>
+            )}
+          </div>
+        </div>
+
+        {/* 快捷入口 */}
+        <div className="card">
+          <div className="card-header">
+            <h2>快捷操作</h2>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setModuleKey("settings")}
+            >
+              配置数据源
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setModuleKey("train")}
+            >
+              开始训练
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setModuleKey("pivot")}
+            >
+              数据透视
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setModuleKey("multieval")}
+            >
+              多站点评估
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  function renderSettings(): ReactNode {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2>数据源路径</h2>
+          <button
+            className="btn btn-primary"
+            disabled={busy === "save-settings"}
+            onClick={() => void saveSettings()}
+          >
+            {busy === "save-settings" ? "保存中..." : "保存配置"}
+          </button>
+        </div>
+        <div className="field-grid cols-2">
+          {(
+            Object.entries(settings) as Array<[string, string]>
+          ).map(([key, value]) => (
+            <div className="field" key={key}>
+              <label>{key}</label>
+              <input
+                value={value}
+                onChange={(e) =>
+                  setSettings((c) => ({ ...c, [key]: e.target.value }))
+                }
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderImport(): ReactNode {
+    return (
+      <>
+        <div className="card">
+          <div className="card-header">
+            <h2>导入准备</h2>
+            <div className="card-actions">
+              <button
+                className="btn btn-ghost"
+                disabled={busy === "check-import"}
+                onClick={() => void checkImportFiles()}
+              >
+                {busy === "check-import" ? "检查中..." : "检查文件"}
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={busy === "start-import"}
+                onClick={() => void startImport()}
+              >
+                {busy === "start-import" ? "启动中..." : "开始导入"}
+              </button>
+            </div>
+          </div>
+          <div className="stats-row">
+            <div className="stat-card">
+              <span>待导入文件</span>
+              <strong>{importCount}</strong>
+            </div>
+            <div className="stat-card">
+              <span>已显示</span>
+              <strong>
+                {Math.min(importFiles.length, 12)} / {importFiles.length}
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        {/* 文件列表 */}
+        {importFiles.length > 0 ? (
+          <div className="card">
+            <div className="card-header">
+              <h2>文件列表</h2>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {importFiles.slice(0, 12).map((f) => (
+                <div
+                  key={f}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid var(--border)",
+                    fontSize: "0.82rem",
+                    fontFamily: "var(--font-mono)",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {f}
+                </div>
+              ))}
+              {importFiles.length > 12 && (
+                <div style={{ color: "var(--text-dim)", fontSize: "0.8rem", padding: "4px 12px" }}>
+                  ... 还有 {importFiles.length - 12} 个文件
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <Empty>
+            先点击"检查文件"确认待导入文件数量和来源路径
+          </Empty>
+        )}
+      </>
+    );
+  }
+
+  function renderProcess(): ReactNode {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2>预处理配置</h2>
+          <button
+            className="btn btn-primary"
+            disabled={
+              busy === "start-process" ||
+              processForm.elements.length === 0
+            }
+            onClick={() => void startProcess()}
+          >
+            {busy === "start-process" ? "提交中..." : "开始预处理"}
+          </button>
+        </div>
+
+        {/* 要素选择 */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: "0.8rem", color: "var(--text-dim)", display: "block", marginBottom: 8 }}>
+            气象要素（可多选）
+          </label>
+          <div className="chip-row">
+            {ELEMENTS.map((el) => (
+              <button
+                key={el}
+                className={`chip${processForm.elements.includes(el) ? " selected" : ""}`}
+                onClick={() => toggleProcessElement(el)}
+              >
+                {el}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 参数表单 */}
+        <div className="field-grid cols-3">
+          <div className="field">
+            <label>开始年份</label>
+            <input
+              value={processForm.start_year}
+              onChange={(e) =>
+                setProcessForm((c) => ({
+                  ...c,
+                  start_year: e.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label>结束年份</label>
+            <input
+              value={processForm.end_year}
+              onChange={(e) =>
+                setProcessForm((c) => ({
+                  ...c,
+                  end_year: e.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label>工作进程数</label>
+            <input
+              value={processForm.num_workers}
+              onChange={(e) =>
+                setProcessForm((c) => ({
+                  ...c,
+                  num_workers: e.target.value,
+                }))
+              }
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* 训练子面板：参数配置 */
+  function renderTrainConfig(): ReactNode {
+    const entries = Object.entries(modelConfig);
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2>超参数配置</h2>
+          <div className="card-actions">
+            <select
+              value={configModel}
+              onChange={(e) => setConfigModel(e.target.value)}
+              style={{ width: 130 }}
+            >
+              <option value="XGBoost">XGBoost</option>
+              <option value="LightGBM">LightGBM</option>
+            </select>
+            <select
+              value={configElement}
+              onChange={(e) => setConfigElement(e.target.value)}
+              style={{ width: 140 }}
+            >
+              {ELEMENTS.map((el) => (
+                <option key={el} value={el}>{el}</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={busy === "fetch-config"}
+              onClick={() => void fetchModelConfig()}
+            >
+              {busy === "fetch-config" ? "加载中..." : "加载配置"}
+            </button>
+            {entries.length > 0 && (
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={busy === "update-config"}
+                onClick={() => void updateModelConfig()}
+              >
+                {busy === "update-config" ? "保存中..." : "更新配置"}
+              </button>
+            )}
+          </div>
+        </div>
+        {entries.length > 0 ? (
+          <div className="config-grid">
+            {entries.map(([key, val]) => (
+              <div className="config-field" key={key}>
+                <label>{key}</label>
+                <input
+                  value={String(val)}
+                  onChange={(e) => {
+                    let parsed: unknown = e.target.value;
+                    if (!Number.isNaN(Number(parsed))) parsed = Number(parsed);
+                    setModelConfig((c) => ({ ...c, [key]: parsed }));
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty>
+            选择模型和要素后点击"加载配置"查看超参数
+          </Empty>
+        )}
+      </div>
+    );
+  }
+
+  /* 训练子面板：训练表单 */
+  function renderTrainForm(): ReactNode {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2>训练配置</h2>
+          <button
+            className="btn btn-primary"
+            disabled={
+              busy === "start-train" || trainForm.element.length === 0
+            }
+            onClick={() => void startTrain()}
+          >
+            {busy === "start-train" ? "提交中..." : "开始训练"}
+          </button>
+        </div>
+
+        {/* 要素选择 */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: "0.8rem", color: "var(--text-dim)", display: "block", marginBottom: 8 }}>
+            训练要素（可多选）
+          </label>
+          <div className="chip-row">
+            {ELEMENTS.map((el) => (
+              <button
+                key={el}
+                className={`chip${trainForm.element.includes(el) ? " selected" : ""}`}
+                onClick={() => toggleTrainElement(el)}
+              >
+                {el}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="field-grid cols-3">
+          <div className="field">
+            <label>开始年份</label>
+            <input
+              value={trainForm.start_year}
+              onChange={(e) =>
+                setTrainForm((c) => ({ ...c, start_year: e.target.value }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label>结束年份</label>
+            <input
+              value={trainForm.end_year}
+              onChange={(e) =>
+                setTrainForm((c) => ({ ...c, end_year: e.target.value }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label>提前停止轮数</label>
+            <input
+              value={trainForm.early_stopping_rounds}
+              onChange={(e) =>
+                setTrainForm((c) => ({
+                  ...c,
+                  early_stopping_rounds: e.target.value,
+                }))
+              }
+            />
+          </div>
+        </div>
+        <div className="field-grid cols-2" style={{ marginTop: 12 }}>
+          <div className="field">
+            <label>季节</label>
+            <select
+              value={trainForm.season}
+              onChange={(e) =>
+                setTrainForm((c) => ({ ...c, season: e.target.value }))
+              }
+            >
+              {SEASONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>模型</label>
+            <select
+              value={trainForm.model}
+              onChange={(e) =>
+                setTrainForm((c) => ({ ...c, model: e.target.value }))
+              }
+            >
+              <option value="XGBoost">XGBoost</option>
+              <option value="LightGBM">LightGBM</option>
+            </select>
+          </div>
+        </div>
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>测试集取值（逗号分隔年份）</label>
+          <textarea
+            rows={3}
+            value={trainForm.test_set_values}
+            onChange={(e) =>
+              setTrainForm((c) => ({
+                ...c,
+                test_set_values: e.target.value,
+              }))
+            }
+            placeholder="例如：2022,2023"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  /* 训练子面板：损失曲线 */
+  function renderTrainLosses(): ReactNode {
+    const canFetch =
+      taskDetail.parent.status === "COMPLETED" &&
+      !!taskDetail.parent.task_id;
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2>损失曲线</h2>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={!canFetch || busy === "fetch-losses"}
+            onClick={() => void fetchLosses()}
+          >
+            {busy === "fetch-losses" ? "加载中..." : "加载损失曲线"}
+          </button>
+        </div>
+        {lossesData && lossesData.epochs.length > 0 ? (
+          <LineChart
+            labels={lossesData.epochs.map(String)}
+            series={[
+              { name: "训练损失", color: "#00c9db", values: lossesData.train_losses },
+              { name: "验证损失", color: "#fbbf24", values: lossesData.test_losses },
+            ]}
+          />
+        ) : (
+          <Empty>
+            {canFetch
+              ? `点击「加载损失曲线」查看训练过程`
+              : "需要先选中一个已完成的训练任务"}
+          </Empty>
+        )}
+      </div>
+    );
+  }
+
+  /* 训练子面板：评估指标 */
+  function renderTrainMetrics(): ReactNode {
+    const canFetch =
+      taskDetail.parent.status === "COMPLETED" &&
+      !!taskDetail.parent.task_id;
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2>测试集评估指标</h2>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={!canFetch || busy === "fetch-metrics"}
+            onClick={() => void fetchMetrics()}
+          >
+            {busy === "fetch-metrics" ? "加载中..." : "加载指标"}
+          </button>
+        </div>
+        {metricsData ? (
+          <table className="metrics-table">
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th>测试集真值</th>
+                <th>测试集预测</th>
+              </tr>
+            </thead>
+            <tbody>
+              {METRIC_NAMES.map((name) => (
+                <tr key={name}>
+                  <td style={{ fontWeight: 600 }}>{name}</td>
+                  <td>{fmt(metricsData.testset_true[name])}</td>
+                  <td>{fmt(metricsData.testset_pred[name])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <Empty>
+            {canFetch
+              ? `点击「加载指标」查看模型评估结果`
+              : "需要先选中一个已完成的训练任务"}
+          </Empty>
+        )}
+      </div>
+    );
+  }
+
+  /* 训练子面板：模型记录管理 */
+  function renderModelRecords(): ReactNode {
+    const completedTrainTasks = tasks.filter(
+      (t) =>
+        t.task_type.startsWith("ModelTrain") &&
+        t.status === "COMPLETED"
+    );
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2>模型记录管理</h2>
+        </div>
+        {/* 已保存的模型 */}
+        {models.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: "0.8rem", color: "var(--text-dim)", display: "block", marginBottom: 8 }}>
+              已保存模型（{models.length}）
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {models.map((m) => (
+                <div
+                  key={m.task_id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 14px",
+                    borderRadius: "var(--radius-sm)",
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: "0.88rem" }}>{m.model_name}</strong>
+                    <span style={{ color: "var(--text-dim)", fontSize: "0.78rem", marginLeft: 8 }}>
+                      {m.element}
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    disabled={busy === "delete-model"}
+                    onClick={() => void deleteModelRecord(m.task_id)}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* 可保存的训练任务 */}
+        {completedTrainTasks.length > 0 && (
+          <div>
+            <label style={{ fontSize: "0.8rem", color: "var(--text-dim)", display: "block", marginBottom: 8 }}>
+              可保存的训练任务
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {completedTrainTasks
+                .filter((t) => !models.some((m) => m.task_id === t.task_id))
+                .slice(0, 8)
+                .map((t) => (
+                  <div
+                    key={t.task_id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 14px",
+                      borderRadius: "var(--radius-sm)",
+                      background: "rgba(52, 211, 153, 0.05)",
+                      border: "1px solid rgba(52, 211, 153, 0.15)",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: "0.85rem" }}>{t.task_name}</strong>
+                      <span style={{ color: "var(--text-dim)", fontSize: "0.75rem", marginLeft: 8 }}>
+                        {t.task_id.slice(0, 8)}
+                      </span>
+                    </div>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={busy === "save-model"}
+                      onClick={() => void saveModelRecord(t.task_id)}
+                    >
+                      保存为模型
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+        {models.length === 0 && completedTrainTasks.length === 0 && (
+          <Empty>
+            完成训练后可在此保存模型记录，用于后续订正和评估
+          </Empty>
+        )}
+      </div>
+    );
+  }
+
+  function renderTrain(): ReactNode {
+    return (
+      <>
+        {renderTrainConfig()}
+        {renderTrainForm()}
+        {renderTrainLosses()}
+        {renderTrainMetrics()}
+        {renderModelRecords()}
+      </>
+    );
   }
 
   async function refreshModels() {
     await runAction("refresh-models", async () => {
-      const result = await api<{ models?: ModelRecord[] }>("/data-correct/get-models");
-      const next = result.models ?? [];
+      const r = await api<{ models?: ModelRecord[] }>(
+        "/data-correct/get-models"
+      );
+      const next = r.models ?? [];
       setModels(next);
-      if (next[0]) setCorrectForm((current) => ({ ...current, model_path: next[0].model_path, element: next[0].element }));
-      addLog("模型列表已刷新", `当前可用模型 ${next.length} 个。`, "success");
+      if (next[0]) {
+        setCorrectForm((c) => ({
+          ...c,
+          model_path: c.model_path || next[0].model_path,
+          element: c.element || next[0].element,
+        }));
+      }
+      addLog("模型已同步", `当前可用 ${next.length} 个模型`, "success");
     });
   }
 
   async function startCorrect() {
     await runAction("start-correct", async () => {
-      const result = await api<{ task_id: string; message: string }>("/data-correct/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model_path: correctForm.model_path,
-          element: correctForm.element,
-          start_year: correctForm.start_year,
-          end_year: correctForm.end_year,
-          season: correctForm.season,
-          block_size: Number(correctForm.block_size),
-          num_workers: Number(correctForm.num_workers),
-        }),
-      });
-      setSelectedTaskId(result.task_id);
-      addLog("订正任务已启动", result.message, "success");
+      const r = await api<{ task_id: string; message: string }>(
+        "/data-correct/start",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model_path: correctForm.model_path,
+            element: correctForm.element,
+            start_year: correctForm.start_year,
+            end_year: correctForm.end_year,
+            season: correctForm.season,
+            block_size: Number(correctForm.block_size),
+            num_workers: Number(correctForm.num_workers),
+          }),
+        }
+      );
+      setSelectedTaskId(r.task_id);
+      addLog("订正已启动", r.message, "success");
     });
   }
 
-  async function cancelTask() {
-    if (!taskDetail.parent.task_id) return;
-    await runAction("cancel-task", async () => {
-      const result = await api<{ message: string }>(`/task_operate/${taskDetail.parent.task_id}/cancel`, { method: "POST" });
-      addLog("取消请求已发送", result.message, "info");
-      await refreshTaskDetail(taskDetail.parent.task_id);
-    });
+  function renderCorrect(): ReactNode {
+    return (
+      <>
+        <div className="card">
+          <div className="card-header">
+            <h2>订正配置</h2>
+            <div className="card-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "refresh-models"}
+                onClick={() => void refreshModels()}
+              >
+                {busy === "refresh-models" ? "同步中..." : "同步模型"}
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={busy === "start-correct"}
+                onClick={() => void startCorrect()}
+              >
+                {busy === "start-correct" ? "提交中..." : "开始订正"}
+              </button>
+            </div>
+          </div>
+
+          <div className="field-grid cols-2">
+            <div className="field">
+              <label>已保存模型</label>
+              <select
+                value={correctForm.model_path}
+                onChange={(e) => {
+                  const found = models.find(
+                    (m) => m.model_path === e.target.value
+                  );
+                  setCorrectForm((c) => ({
+                    ...c,
+                    model_path: e.target.value,
+                    element: found?.element ?? c.element,
+                  }));
+                }}
+              >
+                {models.map((m) => (
+                  <option key={m.model_path} value={m.model_path}>
+                    {m.model_name} ({m.element})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>气象要素</label>
+              <select
+                value={correctForm.element}
+                onChange={(e) =>
+                  setCorrectForm((c) => ({
+                    ...c,
+                    element: e.target.value,
+                  }))
+                }
+              >
+                {ELEMENTS.map((el) => (
+                  <option key={el} value={el}>{el}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="field-grid cols-4" style={{ marginTop: 12 }}>
+            <div className="field">
+              <label>开始年份</label>
+              <input
+                value={correctForm.start_year}
+                onChange={(e) =>
+                  setCorrectForm((c) => ({
+                    ...c,
+                    start_year: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label>结束年份</label>
+              <input
+                value={correctForm.end_year}
+                onChange={(e) =>
+                  setCorrectForm((c) => ({
+                    ...c,
+                    end_year: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label>块大小</label>
+              <input
+                value={correctForm.block_size}
+                onChange={(e) =>
+                  setCorrectForm((c) => ({
+                    ...c,
+                    block_size: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label>进程数</label>
+              <input
+                value={correctForm.num_workers}
+                onChange={(e) =>
+                  setCorrectForm((c) => ({
+                    ...c,
+                    num_workers: e.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 选中模型信息 */}
+        {selectedModel ? (
+          <div className="highlight-row">
+            <div className="highlight-item">
+              <span>模型</span>
+              <strong>{selectedModel.model_name}</strong>
+            </div>
+            <div className="highlight-item">
+              <span>关联任务</span>
+              <strong>{selectedModel.task_id.slice(0, 12)}...</strong>
+            </div>
+            <div className="highlight-item">
+              <span>要素</span>
+              <strong>{selectedModel.element}</strong>
+            </div>
+          </div>
+        ) : (
+          <Empty>
+            当前没有可用模型，请先在"模型训练"模块中训练并保存模型
+          </Empty>
+        )}
+      </>
+    );
   }
 
-  async function loadRawStationPreview(form = pivotForm) {
+  /* ===== 透视 API 操作 ===== */
+
+  async function loadRawStation(form = pivotForm) {
     await runAction("raw-station", async () => {
-      const result = await api<RawStationData>("/data-preview/station-data", {
+      const r = await api<RawStationData>("/data-preview/station-data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -757,538 +2081,1514 @@ export default function App() {
           end_time: toApiDateTime(form.end_time),
         }),
       });
-      setRawStationData(result);
-      addLog("原始站点曲线已更新", `加载了 ${result.timestamps.length} 个时刻的站点观测值。`, "success");
+      setRawStationData(r);
+      addLog(
+        "站点曲线已加载",
+        `${r.timestamps.length} 个时刻`,
+        "success"
+      );
     });
   }
 
-  async function loadRawGridHeatmap(form = pivotForm) {
-    await runAction("raw-grid-heatmap", async () => {
-      const result = await api<RawGridHeatmapData>("/data-preview/grid-data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ element: form.element, timestamp: toApiDateTime(form.heatmap_time) }),
-      });
-      setRawGridData(result);
-      const row = Math.floor(result.lats.length / 2);
-      const col = Math.floor(result.lons.length / 2);
-      setPivotForm((current) => ({ ...current, lat: String(result.lats[row] ?? current.lat), lon: String(result.lons[col] ?? current.lon) }));
-      addLog("原始格点热力图已更新", `已加载 ${result.lats.length} × ${result.lons.length} 的原始格点矩阵。`, "success");
-    });
-  }
-
-  async function loadRawGridTimeseries(form = pivotForm) {
-    await runAction("raw-grid-timeseries", async () => {
-      const lat = Number(form.lat);
-      const lon = Number(form.lon);
-      if (Number.isNaN(lat) || Number.isNaN(lon)) throw new Error("请先提供有效的经纬度坐标。");
-      const result = await api<{ task_id: string; message: string }>("/data-preview/grid-time-series", {
+  async function loadRawHeatmap(form = pivotForm) {
+    await runAction("raw-grid", async () => {
+      const r = await api<RawGridHeatmapData>("/data-preview/grid-data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           element: form.element,
-          lat,
-          lon,
-          start_time: toApiDateTime(form.start_time),
-          end_time: toApiDateTime(form.end_time),
+          timestamp: toApiDateTime(form.heatmap_time),
         }),
       });
-      setRawGridTaskId(result.task_id);
-      setRawGridSeriesData(null);
-      setRawGridStatus({ status: "PENDING", progress: 0, error: null });
-      addLog("原始格点时序任务已启动", result.message, "success");
+      setRawGridData(r);
+      const ri = Math.floor(r.lats.length / 2);
+      const ci = Math.floor(r.lons.length / 2);
+      setPivotForm((c) => ({
+        ...c,
+        lat: String(r.lats[ri] ?? c.lat),
+        lon: String(r.lons[ci] ?? c.lon),
+      }));
+      addLog(
+        "原始热力图已加载",
+        `${r.lats.length} × ${r.lons.length}`,
+        "success"
+      );
     });
   }
 
-  async function loadProcessedPivot(form = pivotForm) {
-    await runAction("pivot-processed", async () => {
-      const result = await api<PivotProcessedData>("/data-pivot/processed-data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ station_name: form.station_name, element: form.element, start_time: toApiDateTime(form.start_time), end_time: toApiDateTime(form.end_time) }),
-      });
-      setProcessedData(result);
-      addLog("站点透视已更新", `加载了 ${result.timestamps.length} 个时刻的站点/格点对比数据。`, "success");
-    });
-  }
-
-  async function loadHeatmap(form = pivotForm) {
-    await runAction("pivot-heatmap", async () => {
-      const result = await api<PivotHeatmapData>("/data-pivot/grid-data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ element: form.element, timestamp: toApiDateTime(form.heatmap_time) }),
-      });
-      setHeatmapData(result);
-      const nextFocus = { row: Math.floor(result.lats.length / 2), col: Math.floor(result.lons.length / 2) };
-      setHeatmapFocus(nextFocus);
-      setPivotForm((current) => ({ ...current, lat: String(result.lats[nextFocus.row] ?? ""), lon: String(result.lons[nextFocus.col] ?? "") }));
-      addLog("热力图已更新", `已加载 ${result.lats.length} × ${result.lons.length} 的格点矩阵。`, "success");
-    });
-  }
-
-  async function loadPivotTimeseries(form = pivotForm) {
-    await runAction("pivot-timeseries", async () => {
+  async function startRawGridSeries(form = pivotForm) {
+    await runAction("raw-series", async () => {
       const lat = Number(form.lat);
       const lon = Number(form.lon);
-      if (Number.isNaN(lat) || Number.isNaN(lon)) throw new Error("请先提供有效的经纬度坐标。");
-      const result = await api<{ task_id: string; message: string }>("/data-pivot/grid-data-timeseries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ element: form.element, lat, lon, start_time: toApiDateTime(form.start_time), end_time: toApiDateTime(form.end_time) }),
-      });
-      setPivotSeriesTaskId(result.task_id);
-      setPivotSeriesData(null);
-      setPivotSeriesStatus({ status: "PENDING", progress: 0, progress_text: "任务已提交，等待执行..." });
-      addLog("格点时序任务已启动", result.message, "success");
+      if (Number.isNaN(lat) || Number.isNaN(lon))
+        throw new Error("请先输入有效经纬度");
+      const r = await api<{ task_id: string; message: string }>(
+        "/data-preview/grid-time-series",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            element: form.element,
+            lat,
+            lon,
+            start_time: toApiDateTime(form.start_time),
+            end_time: toApiDateTime(form.end_time),
+          }),
+        }
+      );
+      setRawGridTaskId(r.task_id);
+      setRawGridSeriesData(null);
+      addLog("格点时序已提交", r.message, "success");
     });
   }
 
-  async function applyQuickRange(hours: number) {
-    const next = shiftHours(pivotForm.end_time, hours);
-    if (!next.start || !next.end) return;
-    const nextForm = { ...pivotForm, start_time: next.start, end_time: next.end };
-    setPivotForm(nextForm);
-
-    const jobs: Array<Promise<unknown>> = [];
-    if (rawStationData) jobs.push(loadRawStationPreview(nextForm));
-    if (rawGridStatus || rawGridSeriesData) jobs.push(loadRawGridTimeseries(nextForm));
-    if (processedData) jobs.push(loadProcessedPivot(nextForm));
-    if (pivotSeriesStatus || pivotSeriesData) jobs.push(loadPivotTimeseries(nextForm));
-
-    if (jobs.length > 0) {
-      await Promise.allSettled(jobs);
-      addLog("快捷范围已应用", `时间范围已切换为最近 ${hours >= 24 ? `${hours / 24} 天` : `${hours} 小时`}，并自动刷新当前结果。`, "info");
-    } else {
-      addLog("快捷范围已应用", `时间范围已切换为最近 ${hours >= 24 ? `${hours / 24} 天` : `${hours} 小时`}。`, "info");
-    }
+  async function loadProcessed(form = pivotForm) {
+    await runAction("pivot-processed", async () => {
+      const r = await api<PivotProcessedData>(
+        "/data-pivot/processed-data",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            station_name: form.station_name,
+            element: form.element,
+            start_time: toApiDateTime(form.start_time),
+            end_time: toApiDateTime(form.end_time),
+          }),
+        }
+      );
+      setProcessedData(r);
+      addLog(
+        "站点对比已加载",
+        `${r.timestamps.length} 个时刻`,
+        "success"
+      );
+    });
   }
+
+  async function loadPivotHeatmap(form = pivotForm) {
+    await runAction("pivot-heatmap", async () => {
+      const r = await api<PivotHeatmapData>("/data-pivot/grid-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          element: form.element,
+          timestamp: toApiDateTime(form.heatmap_time),
+        }),
+      });
+      setHeatmapData(r);
+      const focus = {
+        row: Math.floor(r.lats.length / 2),
+        col: Math.floor(r.lons.length / 2),
+      };
+      setHeatmapFocus(focus);
+      setPivotForm((c) => ({
+        ...c,
+        lat: String(r.lats[focus.row] ?? ""),
+        lon: String(r.lons[focus.col] ?? ""),
+      }));
+      addLog(
+        "订正热力图已加载",
+        `${r.lats.length} × ${r.lons.length}`,
+        "success"
+      );
+    });
+  }
+
+  async function startPivotSeries(form = pivotForm) {
+    await runAction("pivot-series", async () => {
+      const lat = Number(form.lat);
+      const lon = Number(form.lon);
+      if (Number.isNaN(lat) || Number.isNaN(lon))
+        throw new Error("请先输入有效经纬度");
+      const r = await api<{ task_id: string; message: string }>(
+        "/data-pivot/grid-data-timeseries",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            element: form.element,
+            lat,
+            lon,
+            start_time: toApiDateTime(form.start_time),
+            end_time: toApiDateTime(form.end_time),
+          }),
+        }
+      );
+      setPivotSeriesTaskId(r.task_id);
+      setPivotSeriesData(null);
+      addLog("订正时序已提交", r.message, "success");
+    });
+  }
+
+  async function startModelEval() {
+    await runAction("model-eval", async () => {
+      const r = await api<{ task_id: string; message: string }>(
+        "/data-pivot/model-evaluation",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model_paths: models.map((m) => m.model_path),
+            element: pivotForm.element,
+            station_name: pivotForm.station_name,
+            start_time: toApiDateTime(pivotForm.start_time),
+            end_time: toApiDateTime(pivotForm.end_time),
+          }),
+        }
+      );
+      setModelEvalTaskId(r.task_id);
+      setModelEvalResult(null);
+      addLog("模型评估已提交", r.message, "success");
+    });
+  }
+
+  async function startModelRank() {
+    await runAction("model-rank", async () => {
+      const r = await api<{ task_id: string; message: string }>(
+        "/data-pivot/model-ranking",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            element: pivotForm.element,
+            season: "全年",
+            test_set_values: ["2022", "2023"],
+          }),
+        }
+      );
+      setRankTaskId(r.task_id);
+      setRankResult(null);
+      addLog("模型排名已提交", r.message, "success");
+    });
+  }
+
+  async function startExportGrid(type: "data" | "image") {
+    const endpoint =
+      type === "data"
+        ? "/data-preview/export-grid-data"
+        : "/data-preview/export-grid-images";
+    await runAction("export-grid", async () => {
+      const r = await api<{ task_id: string; message: string }>(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          element: pivotForm.element,
+          start_time: toApiDateTime(pivotForm.start_time),
+          end_time: toApiDateTime(pivotForm.end_time),
+        }),
+      });
+      setExportTaskId(r.task_id);
+      setExportSource("preview");
+      setExportStatus(null);
+      addLog(
+        "导出任务已提交",
+        r.message,
+        "success"
+      );
+    });
+  }
+
+  async function startExportCorrected(type: "data" | "image") {
+    const endpoint =
+      type === "data"
+        ? "/data-pivot/export-corrected-data"
+        : "/data-pivot/export-corrected-images";
+    await runAction("export-corrected", async () => {
+      const r = await api<{ task_id: string; message: string }>(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          element: pivotForm.element,
+          start_time: toApiDateTime(pivotForm.start_time),
+          end_time: toApiDateTime(pivotForm.end_time),
+        }),
+      });
+      setExportTaskId(r.task_id);
+      setExportSource("pivot");
+      setExportStatus(null);
+      addLog("订正导出已提交", r.message, "success");
+    });
+  }
+
+  /* 透视轮询 Effects */
+
+  useEffect(() => {
+    if (!rawGridTaskId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await api<{
+          status: string;
+          progress: number;
+          result?: RawGridTimeseriesData | null;
+          error?: string | null;
+        }>(`/data-preview/grid-time-series/status/${rawGridTaskId}`);
+        if (cancelled) return;
+        if (r.status === "COMPLETED" && r.result)
+          setRawGridSeriesData(r.result);
+        if (r.status === "COMPLETED" || r.status === "FAILED")
+          setRawGridTaskId("");
+      } catch { /* 静默 */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [rawGridTaskId]);
+
+  useEffect(() => {
+    if (!pivotSeriesTaskId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await api<{
+          status: string;
+          progress: number;
+          progress_text: string;
+          results?: PivotTimeseriesData | null;
+        }>(`/data-pivot/grid-data-timeseries/status/${pivotSeriesTaskId}`);
+        if (cancelled) return;
+        if (r.status === "COMPLETED" && r.results)
+          setPivotSeriesData(r.results);
+        if (r.status === "COMPLETED" || r.status === "FAILED")
+          setPivotSeriesTaskId("");
+      } catch { /* 静默 */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [pivotSeriesTaskId]);
+
+  useEffect(() => {
+    if (!modelEvalTaskId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await api<{
+          status: string;
+          progress: number;
+          results?: ModelEvalResult | null;
+        }>(`/data-pivot/model-evaluation/status/${modelEvalTaskId}`);
+        if (cancelled) return;
+        if (r.status === "COMPLETED" && r.results)
+          setModelEvalResult(r.results);
+        if (r.status === "COMPLETED" || r.status === "FAILED")
+          setModelEvalTaskId("");
+      } catch { /* 静默 */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [modelEvalTaskId]);
+
+  useEffect(() => {
+    if (!rankTaskId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await api<{
+          status: string;
+          progress: number;
+          results?: ModelRankResult | null;
+        }>(`/data-pivot/model-ranking/status/${rankTaskId}`);
+        if (cancelled) return;
+        if (r.status === "COMPLETED" && r.results) setRankResult(r.results);
+        if (r.status === "COMPLETED" || r.status === "FAILED")
+          setRankTaskId("");
+      } catch { /* 静默 */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [rankTaskId]);
+
+  useEffect(() => {
+    if (!exportTaskId) return;
+    const statusUrl = exportSource === "preview"
+      ? `/data-preview/export-grid-data/status/${exportTaskId}`
+      : `/data-pivot/export-corrected-data/status/${exportTaskId}`;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await api<ExportStatus>(statusUrl);
+        if (cancelled) return;
+        setExportStatus(r);
+        if (r.status === "COMPLETED" || r.status === "FAILED")
+          setExportTaskId("");
+      } catch { /* 静默 */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [exportTaskId, exportSource]);
 
   function selectHeatCell(row: number, col: number) {
     setHeatmapFocus({ row, col });
-    const source = heatmapData ? { lats: heatmapData.lats, lons: heatmapData.lons } : rawGridData ? { lats: rawGridData.lats, lons: rawGridData.lons } : null;
-    if (!source) return;
-    setPivotForm((current) => ({ ...current, lat: String(source.lats[row] ?? ""), lon: String(source.lons[col] ?? "") }));
+    const src = heatmapData ?? rawGridData;
+    if (!src) return;
+    setPivotForm((c) => ({
+      ...c,
+      lat: String(src.lats[row] ?? ""),
+      lon: String(src.lons[col] ?? ""),
+    }));
   }
 
-  const processedSeries = useMemo(() => {
-    if (!processedData) return [];
-    return [
-      { name: "站点实测", color: "#7dc2ff", values: processedData.station_values },
-      { name: "原始格点", color: "#ffd28a", values: processedData.grid_values },
-    ];
-  }, [processedData]);
+  function applyQuickRange(hours: number) {
+    const next = shiftHours(pivotForm.end_time, hours);
+    if (!next.start || !next.end) return;
+    setPivotForm((c) => ({ ...c, start_time: next.start, end_time: next.end }));
+    addLog(
+      "快捷范围",
+      `已切换为最近 ${hours >= 24 ? `${hours / 24} 天` : `${hours} 小时`}`,
+      "info"
+    );
+  }
 
-  const rawStationSeries = useMemo(() => {
-    if (!rawStationData) return [];
-    return [{ name: "原始站点", color: "#7dc2ff", values: rawStationData.values }];
-  }, [rawStationData]);
+  /* ===== 透视子面板 ===== */
 
-  const pivotTimeseriesSeries = useMemo(() => {
-    if (!pivotSeriesData) return [];
-    return [
-      { name: "订正前", color: "#ff9c7a", values: pivotSeriesData.values_before },
-      { name: "订正后", color: "#77efc7", values: pivotSeriesData.values_after },
-    ];
-  }, [pivotSeriesData]);
+  function renderPivot(): ReactNode {
+    const rangeLabel = `${formatAxisTick(toApiDateTime(pivotForm.start_time))} → ${formatAxisTick(toApiDateTime(pivotForm.end_time))}`;
+    const heatLabel = formatAxisTick(toApiDateTime(pivotForm.heatmap_time));
 
-  const rawGridSeries = useMemo(() => {
-    if (!rawGridSeriesData) return [];
-    return [{ name: "原始格点", color: "#ffd28a", values: rawGridSeriesData.values }];
-  }, [rawGridSeriesData]);
+    const processedSummary = processedData
+      ? {
+          stationMean: average(processedData.station_values),
+          gridMean: average(processedData.grid_values),
+          bias: diffAverage(processedData.station_values, processedData.grid_values),
+          count: processedData.timestamps.length,
+        }
+      : null;
 
-  const rawStatusItems = [
-    { label: "站点曲线", active: Boolean(rawStationData), text: rawStationData ? "已就绪" : "未加载" },
-    { label: "格点热力图", active: Boolean(rawGridData), text: rawGridData ? "已就绪" : "未加载" },
-    { label: "格点时序", active: rawGridStatus?.status === "COMPLETED", text: rawGridStatus ? statusLabel(rawGridStatus.status) : "未启动" },
-  ];
+    const focusMeta = heatmapData && heatmapFocus
+      ? {
+          lat: heatmapData.lats[heatmapFocus.row],
+          lon: heatmapData.lons[heatmapFocus.col],
+          before: heatmapData.values_before[heatmapFocus.row]?.[heatmapFocus.col] ?? null,
+          after: heatmapData.values_after[heatmapFocus.row]?.[heatmapFocus.col] ?? null,
+        }
+      : null;
 
-  const compareStatusItems = [
-    { label: "站点对比", active: Boolean(processedData), text: processedData ? "已就绪" : "未加载" },
-    { label: "前后热力图", active: Boolean(heatmapData), text: heatmapData ? "已就绪" : "未加载" },
-    { label: "前后时序", active: pivotSeriesStatus?.status === "COMPLETED", text: pivotSeriesStatus ? statusLabel(pivotSeriesStatus.status) : "未启动" },
-  ];
-  const rangeLabel = `${formatAxisTick(toApiDateTime(pivotForm.start_time))} -> ${formatAxisTick(toApiDateTime(pivotForm.end_time))}`;
-  const heatmapLabel = formatAxisTick(toApiDateTime(pivotForm.heatmap_time));
-  const visualAvailability = useMemo<Record<VisualKey, boolean>>(() => ({
-    "raw-station": Boolean(rawStationData),
-    "raw-grid": Boolean(rawGridData),
-    "raw-grid-series": Boolean(rawGridSeriesData),
-    processed: Boolean(processedData),
-    "compare-heatmap": Boolean(heatmapData),
-    "compare-series": Boolean(pivotSeriesData),
-  }), [rawStationData, rawGridData, rawGridSeriesData, processedData, heatmapData, pivotSeriesData]);
-  const availableVisualKeys = useMemo(() => VISUAL_ORDER.filter((key) => visualAvailability[key]), [visualAvailability]);
-  const currentVisualIndex = visualKey ? availableVisualKeys.indexOf(visualKey) : -1;
-  const visualContextItems = [
-    { label: "站点", value: pivotForm.station_name || "--" },
-    { label: "要素", value: pivotForm.element || "--" },
-    { label: "范围", value: rangeLabel },
-    { label: "热力图时刻", value: heatmapLabel },
-    { label: "选中格点", value: focusMeta ? `${formatMetric(focusMeta.lat, 3)}, ${formatMetric(focusMeta.lon, 3)}` : (pivotForm.lat && pivotForm.lon ? `${pivotForm.lat}, ${pivotForm.lon}` : "--") },
-  ];
-  const pivotSnapshotItems = [
-    { label: "原始站点样本", value: rawSummary ? `${rawSummary.count} 个时刻` : "未加载" },
-    { label: "对比样本", value: processedSummary ? `${processedSummary.count} 个时刻` : "未加载" },
-    { label: "原始热力图", value: rawGridData ? `${rawGridData.lats.length} × ${rawGridData.lons.length}` : "未加载" },
-    { label: "订正热力图", value: heatmapData ? `${heatmapData.lats.length} × ${heatmapData.lons.length}` : "未加载" },
-  ];
-  const moduleDetailItems = useMemo(() => {
-    if (moduleKey === "settings") {
-      const configured = Object.values(settings).filter(Boolean).length;
-      return [
-        { label: "已配置路径", value: `${configured} / 4`, detail: configured === 4 ? "基础数据源已经齐全" : "补齐后再进入后续流程" },
-        { label: "可用站点", value: stations.length ? `${stations.length} 个` : "未读取", detail: "用于透视和预览的站点集合" },
-        { label: "已登记模型", value: models.length ? `${models.length} 个` : "未读取", detail: "用于订正执行的模型清单" },
-      ];
-    }
-    if (moduleKey === "import") {
-      return [
-        { label: "待导入文件", value: importCount ? `${importCount} 个` : "未检查", detail: "建议先检查文件质量再提交任务" },
-        { label: "最近导入任务", value: tasks.filter((item) => item.task_type.startsWith("DataImport")).length.toString(), detail: "可在右侧实时任务里继续跟踪" },
-        { label: "当前状态", value: importCount > 0 ? "可执行" : "待检查", detail: "先预览输入，再执行导入" },
-      ];
-    }
-    if (moduleKey === "process") {
-      return [
-        { label: "已选要素", value: `${processForm.elements.length} 个`, detail: processForm.elements.join(" / ") || "至少选择一个要素" },
-        { label: "时间跨度", value: `${processForm.start_year} - ${processForm.end_year}`, detail: "决定底表覆盖范围" },
-        { label: "并行进程", value: processForm.num_workers, detail: "影响预处理吞吐效率" },
-      ];
-    }
-    if (moduleKey === "train") {
-      return [
-        { label: "训练模型", value: trainForm.model, detail: "当前训练算法配置" },
-        { label: "测试集配置", value: trainForm.test_set_values.split(/[,\n]/).map((item) => item.trim()).filter(Boolean).length.toString(), detail: "用于验证模型效果的切片数量" },
-        { label: "训练季节", value: trainForm.season, detail: `时间范围 ${trainForm.start_year} - ${trainForm.end_year}` },
-      ];
-    }
-    if (moduleKey === "correct") {
-      return [
-        { label: "选中模型", value: selectedModel?.model_name ?? "未选择", detail: selectedModel?.element ? `关联要素 ${selectedModel.element}` : "请先刷新模型列表" },
-        { label: "执行范围", value: `${correctForm.start_year} - ${correctForm.end_year}`, detail: `块大小 ${correctForm.block_size}` },
-        { label: "并行进程", value: correctForm.num_workers, detail: "影响订正吞吐与资源占用" },
-      ];
-    }
-    if (moduleKey === "tasks") {
-      return [
-        { label: "当前筛选", value: taskFilter === "ALL" ? "全部任务" : taskFilter, detail: taskSearch ? `关键词 ${taskSearch}` : "可按状态或关键词收缩结果" },
-        { label: "筛选结果", value: `${taskHistoryView.length} 条`, detail: "左侧为历史列表，右侧为父子任务细节" },
-        { label: "排序方式", value: taskSort === "progress_desc" ? "进度从高到低" : taskSort === "progress_asc" ? "进度从低到高" : "名称排序", detail: "帮助快速定位异常任务" },
-      ];
-    }
-    return [];
-  }, [moduleKey, settings, stations.length, models.length, importCount, tasks, processForm, trainForm, selectedModel, correctForm, taskFilter, taskSearch, taskHistoryView.length, taskSort]);
-
-  return (
-    <div className="app-shell">
-      <div className="background-grid" />
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">WC</div>
-          <div>
-            <div className="brand-title">气象订正工作台</div>
-            <div className="brand-subtitle">围绕任务流与数据透视统一查看处理、训练、订正与分析结果</div>
+    return (
+      <>
+        {/* 筛选工具栏 */}
+        <div className="pivot-toolbar">
+          <div className="card-header" style={{ marginBottom: 12 }}>
+            <h2>分析筛选</h2>
+          </div>
+          <div className="field-grid cols-3">
+            <div className="field">
+              <label>站点</label>
+              <select
+                value={pivotForm.station_name}
+                onChange={(e) =>
+                  setPivotForm((c) => ({ ...c, station_name: e.target.value }))
+                }
+              >
+                {stations.map((s) => (
+                  <option key={s.name} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>要素</label>
+              <select
+                value={pivotForm.element}
+                onChange={(e) =>
+                  setPivotForm((c) => ({ ...c, element: e.target.value }))
+                }
+              >
+                {ELEMENTS.map((el) => (
+                  <option key={el} value={el}>{el}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>热力图时刻</label>
+              <input
+                type="datetime-local"
+                value={pivotForm.heatmap_time}
+                onChange={(e) =>
+                  setPivotForm((c) => ({ ...c, heatmap_time: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="quick-range-row" style={{ marginTop: 10 }}>
+            <span className="quick-range-label">快捷范围</span>
+            <button className="chip" onClick={() => applyQuickRange(24)}>
+              24小时
+            </button>
+            <button className="chip" onClick={() => applyQuickRange(72)}>
+              3天
+            </button>
+            <button className="chip" onClick={() => applyQuickRange(168)}>
+              7天
+            </button>
+          </div>
+          <div className="field-grid cols-4" style={{ marginTop: 10 }}>
+            <div className="field">
+              <label>开始时间</label>
+              <input
+                type="datetime-local"
+                value={pivotForm.start_time}
+                onChange={(e) =>
+                  setPivotForm((c) => ({ ...c, start_time: e.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label>结束时间</label>
+              <input
+                type="datetime-local"
+                value={pivotForm.end_time}
+                onChange={(e) =>
+                  setPivotForm((c) => ({ ...c, end_time: e.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label>纬度</label>
+              <input
+                value={pivotForm.lat}
+                onChange={(e) =>
+                  setPivotForm((c) => ({ ...c, lat: e.target.value }))
+                }
+                placeholder="点击热力图自动填入"
+              />
+            </div>
+            <div className="field">
+              <label>经度</label>
+              <input
+                value={pivotForm.lon}
+                onChange={(e) =>
+                  setPivotForm((c) => ({ ...c, lon: e.target.value }))
+                }
+                placeholder="点击热力图自动填入"
+              />
+            </div>
           </div>
         </div>
-        <div className="topbar-controls">
-          <label className="compact-field">
-            <span>后端地址</span>
-            <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
-          </label>
-          <button className="ghost-button" onClick={() => void refreshBase()}>重新连接</button>
-          <div className={`service-badge ${online ? "online" : "offline"}`}>{online ? "服务在线" : "服务离线"}</div>
+
+        {/* 统计摘要 */}
+        <div className="stats-row">
+          <div className="stat-card">
+            <span>原始站点均值</span>
+            <strong>{fmt(rawStationData ? average(rawStationData.values) : null)}</strong>
+          </div>
+          <div className="stat-card">
+            <span>对比站点均值</span>
+            <strong>{fmt(processedSummary?.stationMean)}</strong>
+          </div>
+          <div className="stat-card">
+            <span>对比格点均值</span>
+            <strong>{fmt(processedSummary?.gridMean)}</strong>
+          </div>
+          <div className="stat-card">
+            <span>平均偏差</span>
+            <strong>{fmt(processedSummary?.bias)}</strong>
+          </div>
+        </div>
+
+        {/* 双栏：原始预览 + 订正对比 */}
+        <div className="pivot-columns">
+          {/* 原始预览 */}
+          <div className="pivot-col">
+            <h3>原始预览</h3>
+            <p>训练前检查站点观测和原始格点分布</p>
+            <div className="pivot-status-row">
+              <span className={`pivot-pill${rawStationData ? " active" : ""}`}>
+                站点曲线 {rawStationData ? "已就绪" : "未加载"}
+              </span>
+              <span className={`pivot-pill${rawGridData ? " active" : ""}`}>
+                格点热力图 {rawGridData ? "已就绪" : "未加载"}
+              </span>
+              <span className={`pivot-pill${rawGridSeriesData ? " active" : ""}`}>
+                格点时序 {rawGridSeriesData ? "已就绪" : "未加载"}
+              </span>
+            </div>
+            <div className="pivot-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "raw-station"}
+                onClick={() => void loadRawStation()}
+              >
+                {busy === "raw-station" ? "查询中..." : "站点曲线"}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "raw-grid"}
+                onClick={() => void loadRawHeatmap()}
+              >
+                {busy === "raw-grid" ? "加载中..." : "格点热力图"}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "raw-series" || !!rawGridTaskId}
+                onClick={() => void startRawGridSeries()}
+              >
+                {busy === "raw-series" ? "提交中..." : rawGridTaskId ? "提取中..." : "格点时序"}
+              </button>
+            </div>
+            {/* 原始站点曲线 */}
+            {rawStationData && rawStationData.timestamps.length > 0 && (
+              <LineChart
+                labels={rawStationData.timestamps}
+                series={[
+                  { name: rawStationData.station_name, color: "#00c9db", values: rawStationData.values },
+                ]}
+              />
+            )}
+            {/* 原始格点热力图 */}
+            {rawGridData && (
+              <HeatmapMatrix
+                title="原始格点热力图"
+                subtitle={`时刻 ${heatLabel}`}
+                values={rawGridData.values}
+                lats={rawGridData.lats}
+                lons={rawGridData.lons}
+                focus={heatmapFocus}
+                onSelect={selectHeatCell}
+              />
+            )}
+            {/* 原始格点时序 */}
+            {rawGridSeriesData && rawGridSeriesData.timestamps.length > 0 && (
+              <LineChart
+                labels={rawGridSeriesData.timestamps}
+                series={[
+                  {
+                    name: `格点 (${fmt(rawGridSeriesData.lat, 3)}, ${fmt(rawGridSeriesData.lon, 3)})`,
+                    color: "#fbbf24",
+                    values: rawGridSeriesData.values,
+                  },
+                ]}
+              />
+            )}
+          </div>
+
+          {/* 订正对比 */}
+          <div className="pivot-col">
+            <h3>订正对比</h3>
+            <p>订正完成后对比站点、空间分布和时序变化</p>
+            <div className="pivot-status-row">
+              <span className={`pivot-pill${processedData ? " active" : ""}`}>
+                站点对比 {processedData ? "已就绪" : "未加载"}
+              </span>
+              <span className={`pivot-pill${heatmapData ? " active" : ""}`}>
+                前后热力图 {heatmapData ? "已就绪" : "未加载"}
+              </span>
+              <span className={`pivot-pill${pivotSeriesData ? " active" : ""}`}>
+                前后时序 {pivotSeriesData ? "已就绪" : "未加载"}
+              </span>
+            </div>
+            <div className="pivot-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "pivot-processed"}
+                onClick={() => void loadProcessed()}
+              >
+                {busy === "pivot-processed" ? "查询中..." : "站点对比"}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "pivot-heatmap"}
+                onClick={() => void loadPivotHeatmap()}
+              >
+                {busy === "pivot-heatmap" ? "加载中..." : "前后热力图"}
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={busy === "pivot-series" || !!pivotSeriesTaskId}
+                onClick={() => void startPivotSeries()}
+              >
+                {busy === "pivot-series" ? "提交中..." : pivotSeriesTaskId ? "提取中..." : "前后时序"}
+              </button>
+            </div>
+            {/* 站点对比 */}
+            {processedData && processedData.timestamps.length > 0 && (
+              <>
+                <LineChart
+                  labels={processedData.timestamps}
+                  series={[
+                    { name: "站点实测", color: "#00c9db", values: processedData.station_values },
+                    { name: "原始格点", color: "#fbbf24", values: processedData.grid_values },
+                  ]}
+                />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <Sparkline title="站点实测" color="#00c9db" values={processedData.station_values} />
+                  <Sparkline title="原始格点" color="#fbbf24" values={processedData.grid_values} />
+                </div>
+              </>
+            )}
+            {/* 选中格点信息 */}
+            {focusMeta && (
+              <div className="highlight-row">
+                <div className="highlight-item">
+                  <span>纬度</span>
+                  <strong>{fmt(focusMeta.lat, 3)}</strong>
+                </div>
+                <div className="highlight-item">
+                  <span>经度</span>
+                  <strong>{fmt(focusMeta.lon, 3)}</strong>
+                </div>
+                <div className="highlight-item">
+                  <span>订正前</span>
+                  <strong>{fmt(focusMeta.before, 3)}</strong>
+                </div>
+                <div className="highlight-item">
+                  <span>订正后</span>
+                  <strong>{fmt(focusMeta.after, 3)}</strong>
+                </div>
+              </div>
+            )}
+            {/* 订正前后热力图 */}
+            {heatmapData && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <HeatmapMatrix
+                  title="订正前"
+                  subtitle={`时刻 ${heatLabel}`}
+                  values={heatmapData.values_before}
+                  lats={heatmapData.lats}
+                  lons={heatmapData.lons}
+                  focus={heatmapFocus}
+                  onSelect={selectHeatCell}
+                />
+                <HeatmapMatrix
+                  title="订正后"
+                  subtitle={`时刻 ${heatLabel}`}
+                  values={heatmapData.values_after}
+                  lats={heatmapData.lats}
+                  lons={heatmapData.lons}
+                  focus={heatmapFocus}
+                  onSelect={selectHeatCell}
+                />
+              </div>
+            )}
+            {/* 订正前后时序 */}
+            {pivotSeriesData && pivotSeriesData.timestamps.length > 0 && (
+              <LineChart
+                labels={pivotSeriesData.timestamps}
+                series={[
+                  { name: "订正前", color: "#fb7185", values: pivotSeriesData.values_before },
+                  { name: "订正后", color: "#34d399", values: pivotSeriesData.values_after },
+                ]}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* 模型评估 */}
+        <div className="card">
+          <div className="card-header">
+            <h2>模型评估</h2>
+            <div className="card-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "model-eval" || !!modelEvalTaskId || models.length === 0}
+                onClick={() => void startModelEval()}
+              >
+                {busy === "model-eval" ? "提交中..." : modelEvalTaskId ? "评估中..." : "启动评估"}
+              </button>
+            </div>
+          </div>
+          {modelEvalResult ? (
+            <>
+              {modelEvalResult.pred_values.length > 0 && (
+                <LineChart
+                  labels={modelEvalResult.timestamps}
+                  series={[
+                    { name: "站点实测", color: "#00c9db", values: modelEvalResult.station_values },
+                    { name: "原始格点", color: "#fbbf24", values: modelEvalResult.grid_values },
+                    ...modelEvalResult.pred_values.map((pv, i) => ({
+                      name: pv.model_name,
+                      color: ["#a78bfa", "#f472b6", "#38bdf8", "#4ade80"][i % 4],
+                      values: pv.pred_values,
+                    })),
+                  ]}
+                />
+              )}
+              {modelEvalResult.metrics.length > 0 && (
+                <table className="metrics-table" style={{ marginTop: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>模型</th>
+                      {METRIC_NAMES.map((n) => (
+                        <th key={n}>{n}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modelEvalResult.metrics.map((m, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 600 }}>{m.model_name}</td>
+                        {METRIC_NAMES.map((n) => (
+                          <td key={n}>{fmt(m.metrics[n])}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          ) : (
+            <Empty>
+              {models.length > 0
+                ? `点击「启动评估」对比所有模型在当前站点的预测效果`
+                : "需要先在训练模块中保存模型"}
+            </Empty>
+          )}
+        </div>
+
+        {/* 模型排名 */}
+        <div className="card">
+          <div className="card-header">
+            <h2>模型排名</h2>
+            <div className="card-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "model-rank" || !!rankTaskId}
+                onClick={() => void startModelRank()}
+              >
+                {busy === "model-rank" ? "提交中..." : rankTaskId ? "排名中..." : "启动排名"}
+              </button>
+            </div>
+          </div>
+          {rankResult && rankResult.ranked_models.length > 0 ? (
+            <table className="metrics-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>模型</th>
+                  <th>季节</th>
+                  {METRIC_NAMES.map((n) => (
+                    <th key={n}>{n}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rankResult.ranked_models.slice(0, 20).map((m, i) => (
+                  <tr key={m.model_id}>
+                    <td style={{ fontWeight: 700 }}>#{i + 1}</td>
+                    <td>{m.model_name}</td>
+                    <td>{m.season}</td>
+                    {METRIC_NAMES.map((n) => (
+                      <td key={n}>{fmt(m.metrics[n])}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <Empty>
+              {rankTaskId ? "正在排名中..." : `点击「启动排名」对所有模型按指标排序`}
+            </Empty>
+          )}
+        </div>
+
+        {/* 数据导出 */}
+        <div className="export-row">
+          <div className="export-card">
+            <h3>原始网格数据导出</h3>
+            <p>导出指定要素和时间范围的原始格点数据</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "export-grid"}
+                onClick={() => void startExportGrid("data")}
+              >
+                导出 NetCDF
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "export-grid"}
+                onClick={() => void startExportGrid("image")}
+              >
+                导出 PNG
+              </button>
+            </div>
+          </div>
+          <div className="export-card">
+            <h3>订正后数据导出</h3>
+            <p>导出订正后的格点数据或可视化图片</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "export-corrected"}
+                onClick={() => void startExportCorrected("data")}
+              >
+                导出 NetCDF
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={busy === "export-corrected"}
+                onClick={() => void startExportCorrected("image")}
+              >
+                导出 PNG
+              </button>
+            </div>
+          </div>
+        </div>
+        {/* 导出状态 */}
+        {exportStatus && (
+          <div className="card">
+            <div className="card-header">
+              <h2>导出任务</h2>
+              <StatusPill status={exportStatus.status} />
+            </div>
+            <ProgressBar value={exportStatus.progress} />
+            <p style={{ color: "var(--text-dim)", fontSize: "0.82rem", marginTop: 8 }}>
+              {exportStatus.progress_text || `${exportStatus.progress}%`}
+            </p>
+            {exportStatus.download_url && (
+              <a
+                href={`${baseUrl.replace(/\/$/, "")}${exportStatus.download_url}`}
+                style={{
+                  display: "inline-block",
+                  marginTop: 10,
+                  color: "var(--accent)",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                }}
+              >
+                点击下载
+              </a>
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /* ===== 多站点评估 ===== */
+
+  async function startMultiEval() {
+    await runAction("multi-eval", async () => {
+      const r = await api<{ task_id: string; message: string }>(
+        "/model-train/multi-station-eval/start",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model_name: multiEvalForm.model_name,
+            element: multiEvalForm.element,
+            model_file: multiEvalForm.model_file,
+            start_year: Number(multiEvalForm.start_year),
+            end_year: Number(multiEvalForm.end_year),
+            season: multiEvalForm.season,
+          }),
+        }
+      );
+      setMultiEvalTaskId(r.task_id);
+      setMultiEvalResult(null);
+      addLog("多站点评估已启动", r.message, "success");
+    });
+  }
+
+  useEffect(() => {
+    if (!multiEvalTaskId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await api<{
+          status: string;
+          progress: number;
+          progress_text: string;
+          results?: {
+            results?: StationEvalResult[];
+            summary?: MultiEvalSummary;
+          } | null;
+        }>(`/model-train/multi-station-eval/status/${multiEvalTaskId}`);
+        if (cancelled) return;
+        if (r.status === "COMPLETED" && r.results) {
+          setMultiEvalResult({
+            results: r.results.results ?? [],
+            summary: r.results.summary ?? {
+              total_stations: 0,
+              cc: { improved_count: 0, degraded_count: 0 },
+              rmse: { improved_count: 0, degraded_count: 0 },
+              mae: { improved_count: 0, degraded_count: 0 },
+              mre: { improved_count: 0, degraded_count: 0 },
+              mbe: { improved_count: 0, degraded_count: 0 },
+              r2: { improved_count: 0, degraded_count: 0 },
+            },
+          });
+        }
+        if (r.status === "COMPLETED" || r.status === "FAILED")
+          setMultiEvalTaskId("");
+      } catch { /* 静默 */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [multiEvalTaskId]);
+
+  function renderMultiEval(): ReactNode {
+    const { summary } = multiEvalResult ?? {
+      summary: null,
+    };
+    const evalResults = multiEvalResult?.results ?? [];
+
+    return (
+      <>
+        {/* 配置 */}
+        <div className="card">
+          <div className="card-header">
+            <h2>评估配置</h2>
+            <button
+              className="btn btn-primary"
+              disabled={busy === "multi-eval" || !!multiEvalTaskId || !multiEvalForm.model_file}
+              onClick={() => void startMultiEval()}
+            >
+              {busy === "multi-eval" ? "提交中..." : multiEvalTaskId ? "评估中..." : "开始评估"}
+            </button>
+          </div>
+
+          <div className="field-grid cols-3">
+            <div className="field">
+              <label>模型类型</label>
+              <select
+                value={multiEvalForm.model_name}
+                onChange={(e) =>
+                  setMultiEvalForm((c) => ({
+                    ...c,
+                    model_name: e.target.value as "XGBoost" | "LightGBM",
+                  }))
+                }
+              >
+                <option value="XGBoost">XGBoost</option>
+                <option value="LightGBM">LightGBM</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>气象要素</label>
+              <select
+                value={multiEvalForm.element}
+                onChange={(e) =>
+                  setMultiEvalForm((c) => ({ ...c, element: e.target.value }))
+                }
+              >
+                {ELEMENTS.map((el) => (
+                  <option key={el} value={el}>{el}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>季节</label>
+              <select
+                value={multiEvalForm.season}
+                onChange={(e) =>
+                  setMultiEvalForm((c) => ({ ...c, season: e.target.value }))
+                }
+              >
+                {SEASONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="field-grid cols-3" style={{ marginTop: 12 }}>
+            <div className="field">
+              <label>模型文件名</label>
+              <input
+                value={multiEvalForm.model_file}
+                onChange={(e) =>
+                  setMultiEvalForm((c) => ({ ...c, model_file: e.target.value }))
+                }
+                placeholder="模型文件路径或文件名"
+              />
+            </div>
+            <div className="field">
+              <label>开始年份</label>
+              <input
+                value={multiEvalForm.start_year}
+                onChange={(e) =>
+                  setMultiEvalForm((c) => ({ ...c, start_year: e.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label>结束年份</label>
+              <input
+                value={multiEvalForm.end_year}
+                onChange={(e) =>
+                  setMultiEvalForm((c) => ({ ...c, end_year: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 汇总统计 */}
+        {summary && (
+          <div className="card">
+            <div className="card-header">
+              <h2>评估汇总</h2>
+              <span style={{ color: "var(--text-dim)", fontSize: "0.85rem" }}>
+                共 {summary.total_stations} 个站点
+              </span>
+            </div>
+            <table className="metrics-table">
+              <thead>
+                <tr>
+                  <th>指标</th>
+                  <th>改善站点数</th>
+                  <th>退化站点数</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(["CC", "RMSE", "MAE", "MRE", "MBE", "R2"] as const).map(
+                  (name) => {
+                    const m = summary[name as keyof MultiEvalSummary];
+                    const data = m as { improved_count: number; degraded_count: number };
+                    return (
+                      <tr key={name}>
+                        <td style={{ fontWeight: 600 }}>{name}</td>
+                        <td className="improved">{data.improved_count}</td>
+                        <td className="degraded">{data.degraded_count}</td>
+                      </tr>
+                    );
+                  }
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 逐站点结果 */}
+        {evalResults.length > 0 && (
+          <div className="card">
+            <div className="card-header">
+              <h2>逐站点结果</h2>
+              {multiEvalTaskId === "" && (
+                <a
+                  href={`${baseUrl.replace(/\/$/, "")}/model-train/multi-station-eval/export/${encodeURIComponent(multiEvalTaskId || "")}`}
+                  className="btn btn-ghost btn-sm"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void runAction("export-eval", async () => {
+                      window.open(
+                        `${baseUrl.replace(/\/$/, "")}/model-train/multi-station-eval/export/${encodeURIComponent(multiEvalTaskId || "")}`
+                      );
+                    });
+                  }}
+                >
+                  导出 Excel
+                </a>
+              )}
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table className="metrics-table">
+                <thead>
+                  <tr>
+                    <th>站点</th>
+                    <th>纬度</th>
+                    <th>经度</th>
+                    <th>模型 CC</th>
+                    <th>格点 CC</th>
+                    <th>模型 RMSE</th>
+                    <th>格点 RMSE</th>
+                    <th>模型 MAE</th>
+                    <th>格点 MAE</th>
+                    <th>模型 R2</th>
+                    <th>格点 R2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {evalResults.map((r) => (
+                    <tr key={r.station_id}>
+                      <td style={{ fontWeight: 600 }}>{r.station_name}</td>
+                      <td>{fmt(r.lat, 2)}</td>
+                      <td>{fmt(r.lon, 2)}</td>
+                      <td className={r.diff_cc_improved ? "improved" : "degraded"}>
+                        {fmt(r.model_cc)}
+                      </td>
+                      <td>{fmt(r.grid_cc)}</td>
+                      <td className={r.diff_rmse_improved ? "improved" : "degraded"}>
+                        {fmt(r.model_rmse)}
+                      </td>
+                      <td>{fmt(r.grid_rmse)}</td>
+                      <td className={r.diff_mae_improved ? "improved" : "degraded"}>
+                        {fmt(r.model_mae)}
+                      </td>
+                      <td>{fmt(r.grid_mae)}</td>
+                      <td className={r.diff_r2_improved ? "improved" : "degraded"}>
+                        {fmt(r.model_r2)}
+                      </td>
+                      <td>{fmt(r.grid_r2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 空状态 */}
+        {!multiEvalResult && !multiEvalTaskId && (
+          <Empty>
+            配置模型参数后点击"开始评估"，系统将批量评估所有站点的模型效果
+          </Empty>
+        )}
+        {multiEvalTaskId && (
+          <div className="card">
+            <div className="task-top">
+              <strong>评估任务执行中</strong>
+              <StatusPill status="PROCESSING" />
+            </div>
+            <p style={{ color: "var(--text-dim)", fontSize: "0.82rem", marginTop: 8 }}>
+              正在逐站点计算评估指标，请等待完成...
+            </p>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /* ===== 任务监控 ===== */
+
+  async function cancelTask() {
+    if (!taskDetail.parent.task_id) return;
+    await runAction("cancel", async () => {
+      const r = await api<{ message: string }>(
+        `/task_operate/${taskDetail.parent.task_id}/cancel`,
+        { method: "POST" }
+      );
+      addLog("取消请求已发送", r.message, "info");
+      await refreshTaskDetail(taskDetail.parent.task_id);
+    });
+  }
+
+  function renderTasks(): ReactNode {
+    const filterOptions: Array<{
+      key: TaskFilter;
+      label: string;
+    }> = [
+      { key: "ALL", label: "全部" },
+      { key: "PROCESSING", label: "运行中" },
+      { key: "COMPLETED", label: "已完成" },
+      { key: "FAILED", label: "失败" },
+      { key: "PENDING", label: "等待中" },
+    ];
+
+    return (
+      <>
+        {/* 筛选栏 */}
+        <div className="card">
+          <div className="card-header">
+            <h2>任务历史</h2>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => void refreshTasks()}
+            >
+              刷新列表
+            </button>
+          </div>
+
+          <div className="chip-row" style={{ marginBottom: 12 }}>
+            {filterOptions.map((f) => (
+              <button
+                key={f.key}
+                className={`chip${taskFilter === f.key ? " selected" : ""}`}
+                onClick={() => setTaskFilter(f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="field-grid cols-2">
+            <div className="field">
+              <label>搜索任务</label>
+              <input
+                value={taskSearch}
+                onChange={(e) => setTaskSearch(e.target.value)}
+                placeholder="任务名 / 类型 / ID"
+              />
+            </div>
+            <div className="field">
+              <label>排序</label>
+              <select
+                value={
+                  taskSearch > "" ? "name" : "progress_desc"
+                }
+                onChange={(e) => setTaskSearch(e.target.value)}
+              >
+                <option value="progress_desc">按进度从高到低</option>
+                <option value="progress_asc">按进度从低到高</option>
+                <option value="name">按名称排序</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* 任务列表 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {filteredTasks.length > 0 ? (
+            filteredTasks.map((t) => (
+              <button
+                key={t.task_id}
+                className={`task-item${selectedTaskId === t.task_id ? " selected" : ""}`}
+                onClick={() => setSelectedTaskId(t.task_id)}
+              >
+                <div className="task-top">
+                  <strong>{t.task_name}</strong>
+                  <StatusPill status={t.status} />
+                </div>
+                <div className="task-meta">
+                  <span>{t.task_type}</span>
+                  <span>{t.progress}%</span>
+                </div>
+                <ProgressBar value={t.progress} slim />
+              </button>
+            ))
+          ) : (
+            <Empty>
+              当前筛选条件下没有任务，切换状态或清空关键词后重试
+            </Empty>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  function renderModuleContent(): ReactNode {
+    switch (moduleKey) {
+      case "dashboard":
+        return renderDashboard();
+      case "settings":
+        return renderSettings();
+      case "import":
+        return renderImport();
+      case "process":
+        return renderProcess();
+      case "train":
+        return renderTrain();
+      case "correct":
+        return renderCorrect();
+      case "pivot":
+        return renderPivot();
+      case "multieval":
+        return renderMultiEval();
+      case "tasks":
+        return renderTasks();
+      default:
+        return null;
+    }
+  }
+
+  /* ----- 渲染 ----- */
+  return (
+    <div className="app-shell">
+      {/* 顶栏 */}
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-icon">WC</div>
+          <div>
+            <div className="brand-title">气象订正工作台</div>
+            <div className="brand-sub">
+              围绕任务流与数据透视统一管理处理、训练、订正与分析
+            </div>
+          </div>
+        </div>
+        <div className="topbar-right">
+          <input
+            className="topbar-input"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="后端地址"
+          />
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => void refreshBase()}
+          >
+            重连
+          </button>
+          <div
+            className={`service-tag ${online ? "online" : "offline"}`}
+          >
+            {online ? "在线" : "离线"}
+          </div>
         </div>
       </header>
 
-      <main className="layout">
-        <aside className="module-rail">
-          <div className="rail-title">业务流程</div>
-          {MODULES.map((item) => (
-            <button key={item.key} className={`rail-item ${moduleKey === item.key ? "active" : ""}`} onClick={() => setModuleKey(item.key)}>
-              <strong>{item.title}</strong>
-              <small>{item.desc}</small>
+      {/* 主布局 */}
+      <div className="main-layout">
+        {/* 侧栏 */}
+        <aside className="sidebar">
+          <div className="sidebar-label">业务流程</div>
+          {MODULES.map((m) => (
+            <button
+              key={m.key}
+              className={`sidebar-item${moduleKey === m.key ? " active" : ""}`}
+              onClick={() => setModuleKey(m.key)}
+            >
+              <strong>{m.title}</strong>
+              <small>{m.desc}</small>
             </button>
           ))}
         </aside>
 
-        <section className="workspace">
-          <div className="workspace-header">
+        {/* 内容区 */}
+        <div className="content-area">
+          <div className="content-header">
             <div>
-              <div className="section-eyebrow">Mission Control</div>
-              <h1>{MODULES.find((item) => item.key === moduleKey)?.title}</h1>
-              <p>{MODULES.find((item) => item.key === moduleKey)?.desc}</p>
+              <h1>{currentModule?.title}</h1>
+              <p>{currentModule?.desc}</p>
             </div>
-            <div className="summary-strip">
-              <div className="summary-item"><span>执行中</span><strong>{stats.processing}</strong></div>
-              <div className="summary-item"><span>已完成</span><strong>{stats.completed}</strong></div>
-              <div className="summary-item"><span>失败</span><strong>{stats.failed}</strong></div>
-              <div className="summary-item"><span>上次同步</span><strong>{lastSync}</strong></div>
+            <div className="header-stats">
+              <span className="stat-chip processing">
+                执行中 {stats.processing}
+              </span>
+              <span className="stat-chip completed">
+                已完成 {stats.completed}
+              </span>
+              <span className="stat-chip failed">
+                失败 {stats.failed}
+              </span>
             </div>
           </div>
 
-          <div className="module-overview">
-            <div className={`stage-card stage-${moduleStage.tone}`}>
-              <span className="stage-label">当前阶段</span>
-              <strong>{moduleStage.label}</strong>
-              <p>{moduleStage.detail}</p>
-            </div>
-            <div className="module-hint"><strong>当前建议</strong><span>{moduleHint}</span></div>
-          </div>
-
-          <div className={`workspace-grid ${moduleKey === "pivot" ? "workspace-grid-pivot" : ""}`}>
-            <section className="main-panel">
-              {moduleKey !== "pivot" ? (
-                <section className="module-detail-band">
-                  <div className="module-detail-copy">
-                    <span className="section-eyebrow">Module Focus</span>
-                    <h2>{MODULES.find((item) => item.key === moduleKey)?.title}</h2>
-                    <p>{moduleHint}</p>
-                  </div>
-                  <div className="module-detail-grid">
-                    {moduleDetailItems.map((item) => (
-                      <div className="module-detail-card" key={item.label}>
-                        <span>{item.label}</span>
-                        <strong>{item.value}</strong>
-                        <p>{item.detail}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              {moduleKey === "settings" ? <div className="panel-section"><div className="panel-header"><h2>数据源路径</h2><button className="primary-button" onClick={() => void saveSettings()} disabled={busy === "save-settings"}>{busy === "save-settings" ? "保存中..." : "保存配置"}</button></div><div className="field-grid two-col">{Object.entries(settings).map(([key, value]) => <label className="field-block" key={key}><span>{key}</span><input value={value} onChange={(event) => setSettings((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div></div> : null}
-              {moduleKey === "import" ? <div className="panel-section"><div className="panel-header"><h2>导入准备</h2><div className="header-actions"><button className="ghost-button" onClick={() => void checkImportFiles()} disabled={busy === "check-import"}>{busy === "check-import" ? "检查中..." : "检查输入"}</button><button className="primary-button" onClick={() => void startImport()} disabled={busy === "start-import"}>{busy === "start-import" ? "启动中..." : "开始导入"}</button></div></div><div className="hero-metric"><div><span>待导入文件</span><strong>{importCount}</strong></div><p>建议先检查，再启动。任务进度会在右侧持续显示。</p></div><div className="list-panel">{importFiles.length > 0 ? importFiles.slice(0, 10).map((file) => <div className="file-row" key={file}><span>{file.split("\\").pop() ?? file}</span><small>{file}</small></div>) : <div className="empty-hint">先点击“检查输入”，确认待导入文件数量和来源路径。</div>}</div></div> : null}
-              {moduleKey === "process" ? <div className="panel-section"><div className="panel-header"><h2>预处理配置</h2><button className="primary-button" onClick={() => void startProcess()} disabled={busy === "start-process"}>{busy === "start-process" ? "提交中..." : "开始预处理"}</button></div><div className="chip-row">{ELEMENTS.map((item) => <button key={item} className={`select-chip ${processForm.elements.includes(item) ? "selected" : ""}`} onClick={() => toggleList(item, "process")}>{item}</button>)}</div><div className="field-grid three-col"><label className="field-block"><span>开始年份</span><input value={processForm.start_year} onChange={(event) => setProcessForm((current) => ({ ...current, start_year: event.target.value }))} /></label><label className="field-block"><span>结束年份</span><input value={processForm.end_year} onChange={(event) => setProcessForm((current) => ({ ...current, end_year: event.target.value }))} /></label><label className="field-block"><span>工作进程数</span><input value={processForm.num_workers} onChange={(event) => setProcessForm((current) => ({ ...current, num_workers: event.target.value }))} /></label></div></div> : null}
-              {moduleKey === "train" ? <div className="panel-section"><div className="panel-header"><h2>训练配置</h2><button className="primary-button" onClick={() => void startTrain()} disabled={busy === "start-train"}>{busy === "start-train" ? "提交中..." : "开始训练"}</button></div><div className="chip-row">{ELEMENTS.map((item) => <button key={item} className={`select-chip ${trainForm.element.includes(item) ? "selected" : ""}`} onClick={() => toggleList(item, "train")}>{item}</button>)}</div><div className="field-grid three-col"><label className="field-block"><span>开始年份</span><input value={trainForm.start_year} onChange={(event) => setTrainForm((current) => ({ ...current, start_year: event.target.value }))} /></label><label className="field-block"><span>结束年份</span><input value={trainForm.end_year} onChange={(event) => setTrainForm((current) => ({ ...current, end_year: event.target.value }))} /></label><label className="field-block"><span>提前停止轮数</span><input value={trainForm.early_stopping_rounds} onChange={(event) => setTrainForm((current) => ({ ...current, early_stopping_rounds: event.target.value }))} /></label></div><div className="field-grid two-col"><label className="field-block"><span>季节</span><select value={trainForm.season} onChange={(event) => setTrainForm((current) => ({ ...current, season: event.target.value }))}>{SEASONS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label className="field-block"><span>模型</span><select value={trainForm.model} onChange={(event) => setTrainForm((current) => ({ ...current, model: event.target.value }))}><option value="XGBoost">XGBoost</option><option value="LightGBM">LightGBM</option></select></label></div><label className="field-block"><span>测试集取值</span><textarea rows={4} value={trainForm.test_set_values} onChange={(event) => setTrainForm((current) => ({ ...current, test_set_values: event.target.value }))} placeholder="例如：2022,2023" /></label></div> : null}
-              {moduleKey === "correct" ? <div className="panel-section"><div className="panel-header"><h2>订正配置</h2><div className="header-actions"><button className="ghost-button" onClick={() => void refreshModels()} disabled={busy === "refresh-models"}>{busy === "refresh-models" ? "刷新中..." : "同步模型"}</button><button className="primary-button" onClick={() => void startCorrect()} disabled={busy === "start-correct"}>{busy === "start-correct" ? "提交中..." : "开始订正"}</button></div></div><div className="field-grid two-col"><label className="field-block"><span>已保存模型</span><select value={correctForm.model_path} onChange={(event) => { const found = models.find((item) => item.model_path === event.target.value); setCorrectForm((current) => ({ ...current, model_path: event.target.value, element: found?.element ?? current.element })); }}>{models.map((item) => <option key={item.model_path} value={item.model_path}>{item.model_name}</option>)}</select></label><label className="field-block"><span>气象要素</span><select value={correctForm.element} onChange={(event) => setCorrectForm((current) => ({ ...current, element: event.target.value }))}>{ELEMENTS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div><div className="field-grid four-col"><label className="field-block"><span>开始年份</span><input value={correctForm.start_year} onChange={(event) => setCorrectForm((current) => ({ ...current, start_year: event.target.value }))} /></label><label className="field-block"><span>结束年份</span><input value={correctForm.end_year} onChange={(event) => setCorrectForm((current) => ({ ...current, end_year: event.target.value }))} /></label><label className="field-block"><span>块大小</span><input value={correctForm.block_size} onChange={(event) => setCorrectForm((current) => ({ ...current, block_size: event.target.value }))} /></label><label className="field-block"><span>进程数</span><input value={correctForm.num_workers} onChange={(event) => setCorrectForm((current) => ({ ...current, num_workers: event.target.value }))} /></label></div>{selectedModel ? <div className="model-highlight"><div><span>模型</span><strong>{selectedModel.model_name}</strong></div><div><span>关联任务</span><strong>{selectedModel.task_id}</strong></div><div><span>要素</span><strong>{selectedModel.element}</strong></div></div> : <div className="empty-hint">当前还没有可用模型。下一步：先完成训练，或点击“同步模型”刷新列表。</div>}</div> : null}
-              {moduleKey === "pivot" ? (
-                <div className="panel-section">
-                  <section className="pivot-stage-hero">
-                    <div className="pivot-stage-copy">
-                      <span className="section-eyebrow">Operations View</span>
-                      <h2>把原始审视、订正比对和格点诊断统一到一条分析流。</h2>
-                      <p>先定筛选，再看结果，最后进入图形页细看空间分布和时序变化。</p>
-                    </div>
-                    <div className="pivot-stage-aside">
-                      <div className="pivot-stage-item"><span>站点</span><strong>{pivotForm.station_name || "--"}</strong></div>
-                      <div className="pivot-stage-item"><span>要素</span><strong>{pivotForm.element}</strong></div>
-                      <div className="pivot-stage-item"><span>范围</span><strong>{rangeLabel}</strong></div>
-                    </div>
-                  </section>
-
-                  <section className="pivot-toolbar-shell">
-                    <div className="panel-header">
-                      <h2>分析筛选</h2>
-                    </div>
-                    <div className="pivot-toolbar">
-                    <div className="field-grid three-col">
-                      <label className="field-block">
-                        <span>站点</span>
-                        <select value={pivotForm.station_name} onChange={(event) => setPivotForm((current) => ({ ...current, station_name: event.target.value }))}>
-                          {stations.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
-                        </select>
-                      </label>
-                      <label className="field-block">
-                        <span>要素</span>
-                        <select value={pivotForm.element} onChange={(event) => setPivotForm((current) => ({ ...current, element: event.target.value }))}>
-                          {ELEMENTS.map((item) => <option key={item} value={item}>{item}</option>)}
-                        </select>
-                      </label>
-                      <label className="field-block">
-                        <span>热力图时刻</span>
-                        <input type="datetime-local" value={pivotForm.heatmap_time} onChange={(event) => setPivotForm((current) => ({ ...current, heatmap_time: event.target.value }))} />
-                      </label>
-                    </div>
-                    <div className="quick-range-row">
-                      <span className="quick-range-label">快捷范围</span>
-                      <button className="select-chip" type="button" onClick={() => void applyQuickRange(24)}>最近24小时</button>
-                      <button className="select-chip" type="button" onClick={() => void applyQuickRange(72)}>最近3天</button>
-                      <button className="select-chip" type="button" onClick={() => void applyQuickRange(168)}>最近7天</button>
-                    </div>
-                    <div className="field-grid four-col">
-                      <label className="field-block"><span>开始时间</span><input type="datetime-local" value={pivotForm.start_time} onChange={(event) => setPivotForm((current) => ({ ...current, start_time: event.target.value }))} /></label>
-                      <label className="field-block"><span>结束时间</span><input type="datetime-local" value={pivotForm.end_time} onChange={(event) => setPivotForm((current) => ({ ...current, end_time: event.target.value }))} /></label>
-                      <label className="field-block"><span>纬度</span><input value={pivotForm.lat} onChange={(event) => setPivotForm((current) => ({ ...current, lat: event.target.value }))} placeholder="点击热力图自动填入" /></label>
-                      <label className="field-block"><span>经度</span><input value={pivotForm.lon} onChange={(event) => setPivotForm((current) => ({ ...current, lon: event.target.value }))} placeholder="点击热力图自动填入" /></label>
-                    </div>
-                    </div>
-                  </section>
-
-                  <section className="pivot-kpis pivot-context-band">
-                    <div className="summary-mini"><span>原始站点均值</span><strong>{formatMetric(rawSummary?.stationMean)}</strong></div>
-                    <div className="summary-mini"><span>对比站点均值</span><strong>{formatMetric(processedSummary?.stationMean)}</strong></div>
-                    <div className="summary-mini"><span>对比格点均值</span><strong>{formatMetric(processedSummary?.gridMean)}</strong></div>
-                    <div className="summary-mini"><span>平均偏差</span><strong>{formatMetric(processedSummary?.meanBias)}</strong></div>
-                  </section>
-
-                  <section className="pivot-snapshot">
-                    <div className="pivot-snapshot-copy">
-                      <span className="section-eyebrow">Workspace Snapshot</span>
-                      <h3>先确定时空范围，再进入图形页做细看。</h3>
-                      <p>主页面承担筛选、状态和决策入口，图形页承担细节阅读。这样既不会把大图挤在工作台里，也更适合连续分析。</p>
-                    </div>
-                    <div className="pivot-snapshot-grid">
-                      {pivotSnapshotItems.map((item) => (
-                        <div className="pivot-snapshot-item" key={item.label}>
-                          <span>{item.label}</span>
-                          <strong>{item.value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-
-                  <div className="pivot-columns">
-                    <section className="pivot-column">
-                      <div className="pivot-column-head">
-                        <div>
-                          <span className="section-eyebrow">Raw Preview</span>
-                          <h3>原始预览</h3>
-                        </div>
-                        <p>训练前先检查站点观测和原始格点分布。</p>
-                      </div>
-                      <div className="pivot-status-row">
-                        {rawStatusItems.map((item) => <span key={item.label} className={`pivot-status-pill ${item.active ? "active" : ""}`}>{item.label} · {item.text}</span>)}
-                      </div>
-                      <div className="pivot-column-actions">
-                        <button className="ghost-button" onClick={() => void loadRawStationPreview()} disabled={busy === "raw-station"}>{busy === "raw-station" ? "查询中..." : "原始站点曲线"}</button>
-                        <button className="ghost-button" onClick={() => void loadRawGridHeatmap()} disabled={busy === "raw-grid-heatmap"}>{busy === "raw-grid-heatmap" ? "加载中..." : "原始格点热力图"}</button>
-                        <button className="ghost-button" onClick={() => void loadRawGridTimeseries()} disabled={busy === "raw-grid-timeseries"}>{busy === "raw-grid-timeseries" ? "提交中..." : "原始格点时序"}</button>
-                      </div>
-                      {rawStationData ? <VisualLaunchCard title="原始站点曲线" detail={`站点 ${rawStationData.station_name}，范围 ${rangeLabel}`} accent="good" action={<button className="ghost-button" onClick={() => setVisualKey("raw-station")}>打开图形</button>} /> : <div className="empty-hint">还没有原始站点曲线。下一步：确认站点、要素和时间范围后，点击“原始站点曲线”。</div>}
-                      {rawGridData ? <VisualLaunchCard title="原始格点热力图" detail={`时刻 ${heatmapLabel}，可在弹层里选点查看`} accent="good" action={<button className="ghost-button" onClick={() => setVisualKey("raw-grid")}>打开热力图</button>} /> : <div className="empty-hint">还没有原始格点热力图。下一步：确认要素和热力图时刻后，点击“原始格点热力图”。</div>}
-                      {rawGridStatus && !(rawGridStatus.status === "COMPLETED" && rawGridSeriesData) ? <div className="detail-card"><div className="detail-row"><span>原始格点时序任务</span><strong>{statusLabel(rawGridStatus.status)}</strong></div><div className="detail-row"><span>提取进度</span><strong>{formatMetric(rawGridStatus.progress, 0)}%</strong></div><div className="progress-track"><div className="progress-fill" style={{ width: `${rawGridStatus.progress}%` }} /></div><p>{rawGridStatus.error || "正在提取原始格点时间序列，请稍候。"} </p></div> : null}
-                      {rawGridSeriesData ? <VisualLaunchCard title="原始格点时序" detail={`范围 ${rangeLabel}，坐标 ${formatMetric(rawGridSeriesData.lat, 3)}, ${formatMetric(rawGridSeriesData.lon, 3)}`} accent="good" action={<button className="ghost-button" onClick={() => setVisualKey("raw-grid-series")}>打开图形</button>} /> : <div className="empty-hint">还没有原始格点时序。下一步：先点击热力图选点或输入经纬度，再点击“原始格点时序”。当前范围：{rangeLabel}。</div>}
-                    </section>
-
-                    <section className="pivot-column">
-                      <div className="pivot-column-head">
-                        <div>
-                          <span className="section-eyebrow">Corrected Compare</span>
-                          <h3>订正对比</h3>
-                        </div>
-                        <p>订正完成后再检查站点对比、空间分布和格点时序变化。</p>
-                      </div>
-                      <div className="pivot-status-row">
-                        {compareStatusItems.map((item) => <span key={item.label} className={`pivot-status-pill ${item.active ? "active" : ""}`}>{item.label} · {item.text}</span>)}
-                      </div>
-                      <div className="pivot-column-actions">
-                        <button className="ghost-button" onClick={() => void loadProcessedPivot()} disabled={busy === "pivot-processed"}>{busy === "pivot-processed" ? "查询中..." : "站点对比分析"}</button>
-                        <button className="ghost-button" onClick={() => void loadHeatmap()} disabled={busy === "pivot-heatmap"}>{busy === "pivot-heatmap" ? "加载中..." : "订正前后热力图"}</button>
-                        <button className="primary-button" onClick={() => void loadPivotTimeseries()} disabled={busy === "pivot-timeseries"}>{busy === "pivot-timeseries" ? "提交中..." : "订正前后时序"}</button>
-                      </div>
-                      {processedData ? <VisualLaunchCard title="站点对比分析" detail={`范围 ${rangeLabel}，站点实测与原始格点同屏对比`} accent="good" action={<button className="ghost-button" onClick={() => setVisualKey("processed")}>打开图形</button>} /> : <div className="empty-hint">还没有站点对比结果。下一步：先完成预处理，再点击“站点对比分析”。当前范围：{rangeLabel}。</div>}
-                      {heatmapData ? <VisualLaunchCard title="订正前后热力图" detail={`时刻 ${heatmapLabel}，在弹层里查看前后空间分布`} accent="good" action={<button className="ghost-button" onClick={() => setVisualKey("compare-heatmap")}>打开热力图</button>} /> : <div className="empty-hint">还没有订正前后热力图。下一步：确认该时刻已有订正结果后，点击“订正前后热力图”。</div>}
-                      <div className="focus-inspector">
-                        <div className="panel-header tight">
-                          <h2>选中格点</h2>
-                          {focusMeta ? <span className="muted-label">{formatMetric(focusMeta.lat, 3)}, {formatMetric(focusMeta.lon, 3)}</span> : null}
-                        </div>
-                        {focusMeta ? <div className="model-highlight"><div><span>订正前</span><strong>{formatMetric(focusMeta.before, 3)}</strong></div><div><span>订正后</span><strong>{formatMetric(focusMeta.after, 3)}</strong></div><div><span>变化量</span><strong>{formatMetric((focusMeta.after ?? 0) - (focusMeta.before ?? 0), 3)}</strong></div></div> : <div className="empty-hint">点击热力图格点后，这里会显示该位置的前后差异。</div>}
-                        {pivotSeriesStatus && !(pivotSeriesStatus.status === "COMPLETED" && pivotSeriesData) ? <div className="detail-card"><div className="detail-row"><span>订正前后时序任务</span><strong>{statusLabel(pivotSeriesStatus.status)}</strong></div><div className="detail-row"><span>提取进度</span><strong>{formatMetric(pivotSeriesStatus.progress, 0)}%</strong></div><div className="progress-track"><div className="progress-fill" style={{ width: `${pivotSeriesStatus.progress}%` }} /></div><p>{pivotSeriesStatus.progress_text || "系统正在生成格点订正前后对比曲线。"} </p></div> : null}
-                        {pivotSeriesData ? <VisualLaunchCard title="订正前后时序" detail={`范围 ${rangeLabel}，可在弹层里放大查看前后曲线`} accent="good" action={<button className="ghost-button" onClick={() => setVisualKey("compare-series")}>打开图形</button>} /> : <div className="empty-hint">还没有订正前后时序。下一步：先在热力图中选点，再点击“订正前后时序”。当前范围：{rangeLabel}。</div>}
-                      </div>
-                    </section>
-                  </div>
-                </div>
-              ) : null}
-              {moduleKey === "tasks" ? <div className="panel-section"><div className="panel-header"><h2>任务历史</h2><button className="ghost-button" onClick={() => void refreshTasks()}>刷新列表</button></div><div className="chip-row">{(["ALL", "PROCESSING", "COMPLETED", "FAILED", "PENDING"] as TaskFilter[]).map((item) => <button key={item} className={`select-chip ${taskFilter === item ? "selected" : ""}`} onClick={() => setTaskFilter(item)}>{item === "ALL" ? "全部" : item === "PROCESSING" ? "运行中" : item === "COMPLETED" ? "已完成" : item === "FAILED" ? "失败" : "等待中"}</button>)}</div><div className="field-grid two-col compact-tools"><label className="field-block"><span>搜索任务</span><input value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="任务名 / 类型 / ID" /></label><label className="field-block"><span>排序方式</span><select value={taskSort} onChange={(event) => setTaskSort(event.target.value as "progress_desc" | "progress_asc" | "name")}><option value="progress_desc">按进度从高到低</option><option value="progress_asc">按进度从低到高</option><option value="name">按名称排序</option></select></label></div><div className="task-table">{taskHistoryView.map((task) => <button key={task.task_id} className={`task-row ${selectedTaskId === task.task_id ? "selected" : ""}`} onClick={() => setSelectedTaskId(task.task_id)}><div className="task-row-main"><strong>{task.task_name}</strong><span className={`status-pill ${statusClass(task.status)}`}>{statusLabel(task.status)}</span></div><div className="task-row-meta"><span>{task.task_type}</span><span>{task.progress}%</span></div><div className="progress-track slim"><div className="progress-fill" style={{ width: `${task.progress}%` }} /></div></button>)}{taskHistoryView.length === 0 ? <div className="empty-hint">当前筛选条件下没有任务。可以切换状态筛选，或清空关键词后重试。</div> : null}</div></div> : null}
+          <div
+            className={`content-body${moduleKey === "pivot" ? " fullscreen-pivot" : ""}`}
+          >
+            {/* 主内容 */}
+            <section className="main-content">
+              {renderModuleContent()}
             </section>
-            <aside className="side-panel">
-              <section className="side-section"><div className="panel-header tight"><h2>实时任务</h2><span className="muted-label">{moduleTasks.length}</span></div><div className="status-legend"><span className="legend-item"><i className="legend-dot dot-processing" />运行中</span><span className="legend-item"><i className="legend-dot dot-completed" />已完成</span><span className="legend-item"><i className="legend-dot dot-failed" />失败</span></div>{moduleTasks.length > 0 ? moduleTasks.map((task) => <button key={task.task_id} className={`live-task ${selectedTaskId === task.task_id ? "selected" : ""}`} onClick={() => setSelectedTaskId(task.task_id)}><div className="live-task-top"><strong>{task.task_name}</strong><span className={`status-pill ${statusClass(task.status)}`}>{statusLabel(task.status)}</span></div><div className="live-task-meta"><span>{task.task_type}</span><span>{task.progress}%</span></div><div className="progress-track"><div className="progress-fill" style={{ width: `${task.progress}%` }} /></div><p>{task.progress_text || "等待下一次进度回传。"} </p></button>) : <div className="empty-hint">当前模块还没有任务。执行一次操作后，这里会自动开始跟踪。</div>}</section>
-              <section className="side-section"><div className="panel-header tight"><h2>当前任务</h2>{taskDetail.parent.status === "PROCESSING" || taskDetail.parent.status === "PENDING" ? <button className="ghost-button danger" onClick={() => void cancelTask()} disabled={busy === "cancel-task"}>{busy === "cancel-task" ? "发送中..." : "取消任务"}</button> : null}</div>{taskDetail.parent.task_id ? <><div className="task-summary-grid"><div className="summary-mini"><span>总子任务</span><strong>{taskSummary.total}</strong></div><div className="summary-mini"><span>进行中</span><strong>{taskSummary.processing}</strong></div><div className="summary-mini"><span>已完成</span><strong>{taskSummary.completed}</strong></div><div className="summary-mini"><span>失败</span><strong>{taskSummary.failed}</strong></div></div><div className="detail-card"><div className="detail-row"><span>任务名</span><strong>{taskDetail.parent.task_name}</strong></div><div className="detail-row"><span>状态</span><strong>{statusLabel(taskDetail.parent.status)}</strong></div><div className="detail-row"><span>进度</span><strong>{taskDetail.parent.progress}%</strong></div><div className="progress-track"><div className="progress-fill" style={{ width: `${taskDetail.parent.progress}%` }} /></div><p>{taskDetail.parent.progress_text || "系统尚未返回更详细的进度描述。"} </p></div><div className="subtask-list">{taskDetail.sub_tasks.length > 0 ? taskDetail.sub_tasks.slice(0, 12).map((item) => <div className="subtask-item" key={item.task_id}><div className="subtask-top"><strong>{item.task_name}</strong><span className={`status-pill ${statusClass(item.status)}`}>{statusLabel(item.status)}</span></div><div className="progress-track slim"><div className="progress-fill" style={{ width: `${item.progress}%` }} /></div><small>{item.progress_text || `${item.progress}%`}</small></div>) : <div className="empty-hint">当前没有返回子任务详情。可以稍后刷新，或切换到其他任务查看。</div>}</div></> : <div className="empty-hint">选择一个任务后，这里会显示父任务和子任务进度。</div>}</section>
-              <section className="side-section"><div className="panel-header tight"><h2>操作回执</h2><span className="muted-label">{logs.length}</span></div><div className="activity-list scroll-panel">{logs.length > 0 ? logs.map((item) => <div className={`activity-item ${item.tone}`} key={item.id}><div className="activity-top"><strong>{item.title}</strong></div><p>{item.detail}</p></div>) : <div className="empty-hint">最近的操作结果会显示在这里。</div>}</div></section>
-            </aside>
-          </div>
-        </section>
-      </main>
 
-      {visualKey ? (
-        <div className="visual-modal">
-          <div className="visual-backdrop" onClick={() => setVisualKey(null)} />
-          <div className="visual-sheet">
-            <div className="visual-sheet-head">
-              <div className="visual-head-copy">
-                <span className="section-eyebrow">{VISUAL_META[visualKey].section}</span>
-                <h2>{VISUAL_META[visualKey].title}</h2>
-                <p>{VISUAL_META[visualKey].detail}</p>
-              </div>
-              <div className="visual-head-actions">
-                <span className="muted-label">{availableVisualKeys.length > 0 && currentVisualIndex >= 0 ? `${currentVisualIndex + 1} / ${availableVisualKeys.length}` : ""}</span>
-                <button className="ghost-button" onClick={() => setVisualKey(null)}>关闭</button>
-              </div>
-            </div>
-            <div className="visual-context-strip">
-              {visualContextItems.map((item) => (
-                <div className="visual-context-item" key={item.label}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
+            {/* 侧面板 — 任务监控 + 日志 */}
+            {moduleKey !== "pivot" && (
+              <aside className="side-content">
+                {/* 模块实时任务 */}
+                <div className="side-section">
+                  <div className="section-title">
+                    模块任务 · {moduleTasks.length}
+                  </div>
+                  {moduleTasks.length > 0 ? (
+                    moduleTasks.map((t) => (
+                      <button
+                        key={t.task_id}
+                        className={`task-item${selectedTaskId === t.task_id ? " selected" : ""}`}
+                        onClick={() => setSelectedTaskId(t.task_id)}
+                      >
+                        <div className="task-top">
+                          <strong>{t.task_name}</strong>
+                          <StatusPill status={t.status} />
+                        </div>
+                        <div className="task-meta">
+                          <span>{t.task_type}</span>
+                          <span>{t.progress}%</span>
+                        </div>
+                        <ProgressBar value={t.progress} slim />
+                      </button>
+                    ))
+                  ) : (
+                    <Empty>当前模块暂无任务</Empty>
+                  )}
                 </div>
-              ))}
-            </div>
-            <div className="visual-shell">
-              <aside className="visual-nav">
-                {VISUAL_ORDER.map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`visual-nav-item ${visualKey === key ? "active" : ""}`}
-                    disabled={!visualAvailability[key]}
-                    onClick={() => visualAvailability[key] && setVisualKey(key)}
-                  >
-                    <span>{VISUAL_META[key].section}</span>
-                    <strong>{VISUAL_META[key].title}</strong>
-                    <small>{visualAvailability[key] ? "可查看" : "未生成"}</small>
-                  </button>
-                ))}
+
+                {/* 当前任务详情 */}
+                <div className="side-section">
+                  <div className="section-title">任务详情</div>
+                  {taskDetail.parent.task_id ? (
+                    <>
+                      <div className="highlight-row">
+                        <div className="highlight-item">
+                          <span>总子任务</span>
+                          <strong>{taskSummary.total}</strong>
+                        </div>
+                        <div className="highlight-item">
+                          <span>进行中</span>
+                          <strong>{taskSummary.processing}</strong>
+                        </div>
+                        <div className="highlight-item">
+                          <span>已完成</span>
+                          <strong>{taskSummary.completed}</strong>
+                        </div>
+                        <div className="highlight-item">
+                          <span>失败</span>
+                          <strong>{taskSummary.failed}</strong>
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="task-top">
+                          <strong>{taskDetail.parent.task_name}</strong>
+                          <StatusPill status={taskDetail.parent.status} />
+                        </div>
+                        <div className="task-meta">
+                          <span>{taskDetail.parent.task_type}</span>
+                          <span>{taskDetail.parent.progress}%</span>
+                        </div>
+                        <ProgressBar value={taskDetail.parent.progress} />
+                        <p style={{ color: "var(--text-dim)", fontSize: "0.82rem", marginTop: 8 }}>
+                          {taskDetail.parent.progress_text || "等待进度回传"}
+                        </p>
+                      </div>
+                      {(taskDetail.parent.status === "PROCESSING" ||
+                        taskDetail.parent.status === "PENDING") && (
+                        <button
+                          className="btn btn-danger btn-sm"
+                          disabled={busy === "cancel"}
+                          onClick={async () => {
+                            await runAction("cancel", async () => {
+                              const r = await api<{ message: string }>(
+                                `/task_operate/${taskDetail.parent.task_id}/cancel`,
+                                { method: "POST" }
+                              );
+                              addLog("取消任务", r.message, "info");
+                              await refreshTaskDetail(
+                                taskDetail.parent.task_id
+                              );
+                            });
+                          }}
+                        >
+                          {busy === "cancel" ? "取消中..." : "取消任务"}
+                        </button>
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {taskDetail.sub_tasks.slice(0, 10).map((st) => (
+                          <div className="subtask-item" key={st.task_id}>
+                            <div className="subtask-top">
+                              <strong>{st.task_name}</strong>
+                              <StatusPill status={st.status} />
+                            </div>
+                            <ProgressBar value={st.progress} slim />
+                            <small>{st.progress_text || `${st.progress}%`}</small>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <Empty>选择任务查看详情</Empty>
+                  )}
+                </div>
+
+                {/* 操作日志 */}
+                <div className="side-section">
+                  <div className="section-title">
+                    操作日志 · {logs.length}
+                  </div>
+                  <div className="log-list">
+                    {logs.length > 0 ? (
+                      logs.map((l) => (
+                        <div
+                          className={`log-item ${l.tone}`}
+                          key={l.id}
+                        >
+                          <strong>{l.title}</strong>
+                          <p>{l.detail}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <Empty>操作结果将显示在此</Empty>
+                    )}
+                  </div>
+                </div>
               </aside>
-              <div className="visual-sheet-body">
-                <div className="visual-stage">
-                  {visualKey === "raw-station" && rawStationData ? <MultiLineChart labels={rawStationData.timestamps} series={rawStationSeries} /> : null}
-                  {visualKey === "raw-grid" && rawGridData ? <>
-                    {rawFocusMeta ? <div className="visual-focus-bar">
-                      <div className="visual-focus-item"><span>选中纬度</span><strong>{formatMetric(rawFocusMeta.lat, 3)}</strong></div>
-                      <div className="visual-focus-item"><span>选中经度</span><strong>{formatMetric(rawFocusMeta.lon, 3)}</strong></div>
-                      <div className="visual-focus-item"><span>原始值</span><strong>{formatMetric(rawFocusMeta.value, 3)}</strong></div>
-                    </div> : null}
-                    <HeatmapMatrix title="原始格点热力图" subtitle={`时刻 ${heatmapLabel}`} values={rawGridData.values} lats={rawGridData.lats} lons={rawGridData.lons} focus={heatmapFocus} onSelect={selectHeatCell} />
-                  </> : null}
-                  {visualKey === "raw-grid-series" && rawGridSeriesData ? <MultiLineChart labels={rawGridSeriesData.timestamps} series={rawGridSeries} /> : null}
-                  {visualKey === "processed" && processedData ? <><MultiLineChart labels={processedData.timestamps} series={processedSeries} /><div className="mini-chart-row"><Sparkline title="站点实测" color="#7dc2ff" values={processedData.station_values} /><Sparkline title="原始格点" color="#ffd28a" values={processedData.grid_values} /></div></> : null}
-                  {visualKey === "compare-heatmap" && heatmapData ? <>
-                    {focusMeta ? <div className="visual-focus-bar">
-                      <div className="visual-focus-item"><span>选中纬度</span><strong>{formatMetric(focusMeta.lat, 3)}</strong></div>
-                      <div className="visual-focus-item"><span>选中经度</span><strong>{formatMetric(focusMeta.lon, 3)}</strong></div>
-                      <div className="visual-focus-item"><span>订正前</span><strong>{formatMetric(focusMeta.before, 3)}</strong></div>
-                      <div className="visual-focus-item"><span>订正后</span><strong>{formatMetric(focusMeta.after, 3)}</strong></div>
-                    </div> : null}
-                    <div className="heatmap-layout"><HeatmapMatrix title="订正前热力图" subtitle={`时刻 ${heatmapLabel}`} values={heatmapData.values_before} lats={heatmapData.lats} lons={heatmapData.lons} focus={heatmapFocus} onSelect={selectHeatCell} /><HeatmapMatrix title="订正后热力图" subtitle={`时刻 ${heatmapLabel}`} values={heatmapData.values_after} lats={heatmapData.lats} lons={heatmapData.lons} focus={heatmapFocus} onSelect={selectHeatCell} /></div>
-                  </> : null}
-                  {visualKey === "compare-series" && pivotSeriesData ? <MultiLineChart labels={pivotSeriesData.timestamps} series={pivotTimeseriesSeries} /> : null}
-                </div>
-                <div className="visual-insights">
-                  <div className="visual-insight-card">
-                    <span>当前视图</span>
-                    <strong>{VISUAL_META[visualKey].title}</strong>
-                    <p>{VISUAL_META[visualKey].detail}</p>
-                  </div>
-                  <div className="visual-insight-card">
-                    <span>分析提示</span>
-                    <strong>{visualKey === "raw-grid" || visualKey === "compare-heatmap" ? "点击格点可同步经纬度" : "结合时间范围判断变化节奏"}</strong>
-                    <p>{visualKey === "compare-heatmap" || visualKey === "compare-series" ? "如果没有订正结果，请先返回工作台确认当前要素与时刻已经完成订正。" : "训练前先从原始预览确认数据质量，再切换到订正对比查看效果。"}</p>
-                  </div>
-                  <div className="visual-insight-card">
-                    <span>快捷操作</span>
-                    <strong>Esc 关闭，左右方向键切换</strong>
-                    <p>保留当前筛选上下文，不需要返回主页面重新选择条件。</p>
-                  </div>
-                </div>
-                <div className="visual-close-hint">点击遮罩、右上角关闭按钮，或按 Esc 都可以退出当前图形页。</div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
-
