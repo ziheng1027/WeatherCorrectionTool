@@ -53,6 +53,12 @@
   <img src="docs/站点分布与高度.png" alt="站点分布与高度" width="600"/>
 </div>
 
+### 订正效果图
+
+<div align="center">
+  <img src="docs/可视化演示图.png" alt="可视化演示图" width="600"/>
+</div>
+
 ### 订正前后误差热力图对比
 
 通过格点级误差热力图，直观展示订正前后的精度提升效果：
